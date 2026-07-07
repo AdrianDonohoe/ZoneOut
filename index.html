@@ -123,7 +123,22 @@ const PALS=[
    rivet:'#4e5f80',vent:'190,120,255',ventGlow:'magenta',haz0:'#3a3a56',haz1:'#16162a',
    wall0:'#4a5878',wall1:'#2a3450',wallF:'#0c1020',
    water0:'#12283e',water1:'#081422',waterHi:'rgba(120,180,255,0.12)',
-   pit0:'#07090f',pit1:'#020307',conv0:'#1c2230',convStripe:'rgba(150,190,255,0.4)'}
+   pit0:'#07090f',pit1:'#020307',conv0:'#1c2230',convStripe:'rgba(150,190,255,0.4)'},
+  {b0:'#28343e',b1:'#202a34',b2:'#19212a',plate0:'#38495a',plate1:'#232e3a',
+   rivet:'#5a7288',vent:'120,200,255',ventGlow:'blue',haz0:'#3a4a24',haz1:'#161e10',
+   wall0:'#4e6478',wall1:'#2c3c4c',wallF:'#0e161e',
+   water0:'#0e3540',water1:'#071d26',waterHi:'rgba(140,230,255,0.14)',
+   pit0:'#060a0e',pit1:'#020507',conv0:'#1e262e',convStripe:'rgba(140,210,255,0.4)'},
+  {b0:'#4a3d26',b1:'#3e321e',b2:'#312716',plate0:'#5e4c2e',plate1:'#39301c',
+   rivet:'#8a744e',vent:'255,210,110',ventGlow:'yellow',haz0:'#4d3a20',haz1:'#1f170c',
+   wall0:'#7c6640',wall1:'#4a3c24',wallF:'#1c1408',
+   water0:'#37391a',water1:'#1a1c0c',waterHi:'rgba(220,230,140,0.12)',
+   pit0:'#0e0a06',pit1:'#050302',conv0:'#2a241a',convStripe:'rgba(255,214,120,0.4)'},
+  {b0:'#333a46',b1:'#282e3a',b2:'#1e2430',plate0:'#465064',plate1:'#2a3140',
+   rivet:'#68748c',vent:'255,110,110',ventGlow:'red',haz0:'#4d4d20',haz1:'#1f1f0e',
+   wall0:'#5a6478',wall1:'#343c4e',wallF:'#12161e',
+   water0:'#16222c',water1:'#0a1218',waterHi:'rgba(150,200,255,0.10)',
+   pit0:'#07080c',pit1:'#020305',conv0:'#20242e',convStripe:'rgba(255,150,150,0.35)'}
 ];
 function mkTileset(pal){
   function base(g,seed){
@@ -271,7 +286,11 @@ function mkTileset(pal){
   t.haz0=pal.haz0; t.haz1=pal.haz1;
   return t;
 }
-const TILESETS=[mkTileset(PALS[0]),mkTileset(PALS[1]),mkTileset(PALS[2])];
+const TILESETS=PALS.map(mkTileset);
+// area -> tileset (area 7, the final assault, reuses the night palette)
+const AREA_PAL=[0,0,1,2,3,4,5,2];
+const ALEN=[0,2600,2800,3000,3000,3200,3200,1600];
+const endBi=a=>Math.floor(ALEN[a]/(TS*BAND));
 
 //------------------------------------------------- terrain layout
 // world rows group into 8-row bands; each band rolls a terrain type.
@@ -279,8 +298,11 @@ const TILESETS=[mkTileset(PALS[0]),mkTileset(PALS[1]),mkTileset(PALS[2])];
 const BAND=8, COLS=W/TS;
 function tileAt(wr,c){
   if(c<0||c>=COLS||wr<0) return 'ground';
+  if(tempWalls.length){ // Warden's raised barriers
+    for(const w of tempWalls) if(w.wr===wr&&w.c===c&&w.t>=0.5) return 'wall';
+  }
   const bi=Math.floor(wr/BAND), br=wr-bi*BAND;
-  if(bi<2||bi>=10) return 'ground';
+  if(bi<2||bi>=endBi(area)) return 'ground';
   // deal band types from a fixed variety deck so every area has every terrain,
   // rotated by area+loop so each run's layout differs
   const ORDER=['open','chasm','belt','barrier','flood','open','chasm','belt'];
@@ -315,10 +337,18 @@ function tileAt(wr,c){
   if(br>=1&&br<=6) return 'water'; // flooded section
   return 'ground';
 }
+const ISLES=[[70,300],[250,300]]; // dry ground during the Dredger's flood
+const inIsle=(x,y)=>ISLES.some(i=>Math.abs(x-i[0])<36&&Math.abs(y-i[1])<44);
 function tileTypeAt(x,y){
   const off=dst%TS, baseRow=Math.floor(dst/TS), rows=Math.ceil(H/TS)+1;
   const ry=Math.floor((y-off)/TS);
-  return tileAt(baseRow+rows-ry,Math.floor(x/TS));
+  let t=tileAt(baseRow+rows-ry,Math.floor(x/TS));
+  if(flood>0.9&&t==='ground'&&y>150&&!inIsle(x,y)) t='water';
+  return t;
+}
+function cellAt(x,y){
+  const off=dst%TS, baseRow=Math.floor(dst/TS);
+  return {c:Math.floor(x/TS), wr:baseRow+16-Math.floor((y-off)/TS)};
 }
 const solidAt=(x,y)=>tileTypeAt(x,y)==='wall';
 function safeSpawnX(off){
@@ -402,6 +432,7 @@ const sfx={
   shield(){ tone(320,640,0.14,'square',0.09); noise(0.12,0.1,900); },
   warn(){ tone(880,880,0.08,'square',0.07); },
   fall(){ tone(520,60,0.7,'sine',0.18); },
+  thud(){ tone(120,45,0.18,'sine',0.24); noise(0.12,0.10,300); },
   die(){ noise(0.6,0.35,400); tone(300,40,0.55,'sawtooth',0.2); },
   extend(){ for(let i=0;i<4;i++) tone(520+i*130,520+i*130,0.1,'square',0.08,AC?AC.currentTime+i*0.09:0); }
 };
@@ -785,6 +816,9 @@ let enemies=[], pbul=[], ebul=[], pickups=[], fx=[], parts=[], popups=[], bombQ=
 let dst=0, scrollSpd=26, evIdx=0, events=[], levelLen=2600;
 let boss=null, bossDropT=0, midDone=false;
 let plats=[], gameT=0; // sliding platforms over chasms (game-time driven)
+let lobs=[];            // arcing shells with landing markers (Dredger)
+let flood=0, floodOn=false, ventPush=1, ventT=0; // Dredger deck flood + bilge currents
+let tempWalls=[];       // Warden's raised barrier cells {wr,c,t,life}
 let eidc=0;
 
 const DRAIN=100/55;
@@ -912,7 +946,116 @@ function buildLevel3(){ // Blackout Sector: spotters sweep, everything hides in 
   ev.sort((a,b)=>a.d-b.d);
   return ev;
 }
-function buildLevel(a){ return a===1?buildLevel1():a===2?buildLevel2():buildLevel3(); }
+function buildLevel4(){ // Flooded Docks: waders and divers
+  const ev=[]; const add=(d,f)=>ev.push({d,f});
+  const grunts=(d,xs)=>xs.forEach((x,i)=>add(d+i*22,()=>spawnE('grunt',x)));
+  const drones=(d,x0,dx,n)=>{for(let i=0;i<n;i++)add(d+i*28,()=>spawnE('drone',x0+dx*i));};
+  const mines=(d,xs)=>xs.forEach((x,i)=>add(d+i*10,()=>spawnE('mine',x)));
+  grunts(160,[90,230]);
+  add(300,()=>spawnP('E',160));
+  add(380,()=>spawnE('shield',120)); add(400,()=>spawnE('shield',200));
+  drones(500,40,55,5);
+  add(600,()=>spawnP('P',260));
+  mines(680,[80,160,240]);
+  add(780,()=>spawnE('turret',44)); add(785,()=>spawnE('turret',276));
+  grunts(880,[60,130,200,270]);
+  add(980,()=>spawnP('E',100)); add(1000,()=>spawnP('F',220));
+  add(1080,()=>spawnE('tank',110)); add(1100,()=>spawnE('tank',210));
+  drones(1220,280,-50,5);
+  add(1340,()=>spawnP('B',160));
+  add(1420,()=>spawnE('shield',80)); add(1440,()=>spawnE('shield',240)); mines(1460,[130,190]);
+  add(1560,()=>spawnP('E',60)); add(1580,()=>spawnP('P',260));
+  grunts(1680,[40,110,180,250,285]);
+  add(1800,()=>spawnE('turret',110)); add(1805,()=>spawnE('turret',210)); add(1820,()=>spawnE('tank',160));
+  add(1940,()=>spawnP('W',160));
+  drones(2040,50,45,6); mines(2080,[70,240]);
+  add(2200,()=>spawnP('E',240)); add(2220,()=>spawnP('F',80));
+  add(2320,()=>spawnE('shield',120)); add(2340,()=>spawnE('shield',200)); add(2360,()=>spawnE('tank',160));
+  grunts(2480,[40,110,180,250,75,145,215,285]);
+  add(2620,()=>spawnP('E',160)); add(2640,()=>spawnP('S',60));
+  ev.sort((a,b)=>a.d-b.d); return ev;
+}
+function buildLevel5(){ // Wasteland: minefields and armor columns
+  const ev=[]; const add=(d,f)=>ev.push({d,f});
+  const grunts=(d,xs)=>xs.forEach((x,i)=>add(d+i*22,()=>spawnE('grunt',x)));
+  const drones=(d,x0,dx,n)=>{for(let i=0;i<n;i++)add(d+i*28,()=>spawnE('drone',x0+dx*i));};
+  const mines=(d,xs)=>xs.forEach((x,i)=>add(d+i*10,()=>spawnE('mine',x)));
+  mines(140,[70,140,210,280]);
+  grunts(260,[100,220]);
+  add(360,()=>spawnP('E',160));
+  add(440,()=>spawnE('tank',90)); add(460,()=>spawnE('tank',230));
+  mines(580,[50,110,170,230,290]);
+  add(680,()=>spawnP('P',60));
+  grunts(760,[50,120,190,260]);
+  add(880,()=>spawnE('turret',160)); mines(900,[80,240]);
+  add(1000,()=>spawnP('E',220)); add(1020,()=>spawnP('F',100));
+  add(1100,()=>spawnE('tank',60)); add(1120,()=>spawnE('tank',160)); add(1140,()=>spawnE('tank',260));
+  drones(1260,40,50,5);
+  add(1380,()=>spawnP('B',160)); add(1400,()=>spawnP('P',280));
+  mines(1480,[60,120,180,240,300,90]);
+  grunts(1600,[40,110,180,250,285,75]);
+  add(1740,()=>spawnP('E',120));
+  add(1820,()=>spawnE('shield',110)); add(1840,()=>spawnE('shield',210)); add(1860,()=>spawnE('tank',160));
+  add(1980,()=>spawnP('W',160));
+  mines(2080,[70,140,210,280]); drones(2120,280,-55,4);
+  add(2240,()=>spawnP('E',60)); add(2260,()=>spawnP('F',260));
+  add(2360,()=>spawnE('tank',100)); add(2380,()=>spawnE('tank',220)); add(2400,()=>spawnE('turret',160));
+  grunts(2520,[40,110,180,250,75,145,215,285]);
+  add(2680,()=>spawnP('E',160)); mines(2720,[110,210]);
+  add(2840,()=>spawnP('S',160));
+  ev.sort((a,b)=>a.d-b.d); return ev;
+}
+function buildLevel6(){ // The Stockade: guards, searchlights, kill-boxes
+  const ev=[]; const add=(d,f)=>ev.push({d,f});
+  const grunts=(d,xs)=>xs.forEach((x,i)=>add(d+i*22,()=>spawnE('grunt',x)));
+  const drones=(d,x0,dx,n)=>{for(let i=0;i<n;i++)add(d+i*28,()=>spawnE('drone',x0+dx*i));};
+  const mines=(d,xs)=>xs.forEach((x,i)=>add(d+i*10,()=>spawnE('mine',x)));
+  add(140,()=>spawnE('spotter',160));
+  grunts(240,[80,240]);
+  add(340,()=>spawnP('E',160));
+  add(420,()=>spawnE('turret',60)); add(425,()=>spawnE('turret',260)); add(440,()=>spawnE('spotter',160));
+  add(560,()=>spawnP('P',100));
+  add(640,()=>spawnE('shield',90)); add(660,()=>spawnE('shield',230));
+  drones(760,40,55,5);
+  add(880,()=>spawnP('E',240)); add(900,()=>spawnP('F',80));
+  grunts(980,[50,120,190,260,90]);
+  add(1100,()=>spawnE('spotter',110)); add(1120,()=>spawnE('tank',210));
+  mines(1220,[100,160,220]);
+  add(1320,()=>spawnP('B',160)); add(1340,()=>spawnP('P',60));
+  add(1420,()=>spawnE('turret',110)); add(1425,()=>spawnE('turret',210)); add(1440,()=>spawnE('shield',160));
+  grunts(1560,[40,110,180,250,285]);
+  add(1700,()=>spawnP('E',120));
+  add(1780,()=>spawnE('spotter',80)); add(1800,()=>spawnE('spotter',240)); drones(1820,280,-50,4);
+  add(1960,()=>spawnP('W',160));
+  add(2040,()=>spawnE('tank',90)); add(2060,()=>spawnE('tank',230)); add(2080,()=>spawnE('shield',160));
+  add(2200,()=>spawnP('E',220)); add(2220,()=>spawnP('F',100));
+  grunts(2320,[40,110,180,250,75,145]);
+  add(2460,()=>spawnE('turret',60)); add(2465,()=>spawnE('turret',160)); add(2470,()=>spawnE('turret',260));
+  add(2600,()=>spawnP('E',160)); add(2620,()=>spawnP('S',260));
+  grunts(2720,[50,120,190,260,90,230]);
+  ev.sort((a,b)=>a.d-b.d); return ev;
+}
+function buildLevel7(){ // Final Assault: short, dense, generous supplies
+  const ev=[]; const add=(d,f)=>ev.push({d,f});
+  const grunts=(d,xs)=>xs.forEach((x,i)=>add(d+i*20,()=>spawnE('grunt',x)));
+  const drones=(d,x0,dx,n)=>{for(let i=0;i<n;i++)add(d+i*24,()=>spawnE('drone',x0+dx*i));};
+  add(120,()=>spawnP('P',120)); add(130,()=>spawnP('E',200));
+  grunts(220,[60,130,200,270]);
+  drones(340,40,55,5);
+  add(440,()=>spawnE('shield',110)); add(460,()=>spawnE('shield',210));
+  add(560,()=>spawnP('F',160)); add(580,()=>spawnP('P',60));
+  add(660,()=>spawnE('tank',90)); add(680,()=>spawnE('tank',230));
+  add(780,()=>spawnE('turret',60)); add(785,()=>spawnE('turret',260)); grunts(800,[110,210]);
+  add(920,()=>spawnP('E',160)); add(940,()=>spawnP('B',240));
+  drones(1020,280,-50,5); add(1060,()=>spawnE('spotter',160));
+  grunts(1160,[40,110,180,250,285,75]);
+  add(1300,()=>spawnP('E',100)); add(1320,()=>spawnP('F',220));
+  add(1400,()=>spawnE('tank',160)); add(1420,()=>spawnE('shield',80)); add(1440,()=>spawnE('shield',240));
+  ev.sort((a,b)=>a.d-b.d); return ev;
+}
+function buildLevel(a){
+  return [null,buildLevel1,buildLevel2,buildLevel3,buildLevel4,buildLevel5,buildLevel6,buildLevel7][a]();
+}
 
 // terrain-aware setpieces: read the band deck and garrison it.
 // (band math mirrors tileAt — keep the two in sync)
@@ -924,7 +1067,7 @@ function bandInfo(bi){
 const rowD=wr=>(wr-17)*TS; // distance at which world row wr spawns at the top edge
 function buildPlats(){
   plats=[];
-  for(let bi=2;bi<10;bi++) if(bandInfo(bi)==='chasm'){
+  for(let bi=2;bi<endBi(area);bi++) if(bandInfo(bi)==='chasm'){
     const pl={r0:bi*BAND, x0:80+hash(bi*533+area)*(W-160), range:50+hash(bi*77+area)*26,
       sp:0.9+hash(bi*91+area)*0.7, ph:hash(bi*13+area)*TAU, x:0, px:0};
     pl.x=pl.px=clamp(pl.x0+Math.sin(pl.ph)*pl.range,26,W-26);
@@ -944,7 +1087,7 @@ function platAt(x,y){
 }
 function terrainEvents(){
   const ev=[];
-  for(let bi=2;bi<10;bi++){
+  for(let bi=2;bi<endBi(area);bi++){
     const bt=bandInfo(bi), r0=bi*BAND;
     if(bt==='chasm'){ // a keeper on each bridge, crossers behind it
       for(let c=0;c<COLS;c++){
@@ -990,15 +1133,66 @@ function makeBoss(kind){
   if(kind===1){ b.hp=b.maxHp=260; b.pods=[{dx:-46,dy:18,hp:60,max:60},{dx:46,dy:18,hp:60,max:60}]; }
   else if(kind===2){ b.hp=b.maxHp=300; b.pods=[{dx:-54,dy:12,hp:70,max:70},{dx:54,dy:12,hp:70,max:70}]; }
   else if(kind===3){ b.hp=b.maxHp=340; b.pods=[{dx:-48,dy:6,hp:70,max:70},{dx:48,dy:6,hp:70,max:70}]; }
+  else if(kind===4){ b.hp=b.maxHp=380; b.pods=[{dx:-50,dy:8,hp:70,max:70},{dx:50,dy:8,hp:70,max:70}]; b.vd=1; }
+  else if(kind===5){ b.hp=b.maxHp=320; b.pods=[]; b.segs=[]; b.trail=[]; b.hidden=true; b.wstate='burrow'; b.wT=2.4; b.heading=0; }
+  else if(kind===6){ b.hp=b.maxHp=400; b.pods=[{dx:-66,dy:10,hp:50,max:50},{dx:-22,dy:10,hp:50,max:50},{dx:22,dy:10,hp:50,max:50},{dx:66,dy:10,hp:50,max:50}]; }
+  else if(kind===7){ b.hp=b.maxHp=450; b.pods=[{dx:-55,dy:4,hp:80,max:80},{dx:55,dy:4,hp:80,max:80}]; b.open=0; b.launchT=3; b.doorQ=0; b.shielded=true; }
   else if(kind===101){ b.hp=b.maxHp=140+40*(loop-1); b.pods=[]; }  // SENTRY GATE
   else if(kind===102){ b.hp=b.maxHp=170+40*(loop-1); b.pods=[]; }  // DRILL BARGE
+  else if(kind===103){ b.hp=b.maxHp=220; b.pods=[]; // GEMINI INTERCEPTORS
+    b.twins=[{x:W/2-70,y:70,hp:110,dead:false},{x:W/2+70,y:98,hp:110,dead:false}]; }
   return b;
+}
+// Warden barrier helpers
+function raiseWall(wr,c,life){
+  if(c<0||c>=COLS) return;
+  for(const pl of players()){ // never seal a cell someone is standing beside
+    const pc=cellAt(pl.x,pl.y);
+    if(Math.abs(pc.c-c)<=1&&Math.abs(pc.wr-wr)<=1) return;
+  }
+  if(tileAt(wr,c)!=='ground') return;
+  if(tempWalls.some(w=>w.wr===wr&&w.c===c)) return;
+  tempWalls.push({wr,c,t:0,life:life||5.5});
+}
+function ringWalls(tp){
+  const pc=cellAt(tp.x,tp.y);
+  let n=0;
+  for(let dc=-2;dc<=2;dc++) for(let dr=-2;dr<=2;dr++){
+    if(Math.max(Math.abs(dc),Math.abs(dr))!==2) continue;
+    if(hash((boss.t*97|0)+dc*31+dr*17)<0.28) continue; // leave escape gaps
+    raiseWall(pc.wr+dr,pc.c+dc,5.5);
+    if(++n>=11) return;
+  }
+}
+function lineWalls(){
+  const row=cellAt(W/2,214).wr;
+  const g1=1+Math.floor(hash(boss.t*811|0)*7), g2=(g1+4)%9;
+  for(let c=0;c<COLS;c++){
+    if(c===g1||c===g2) continue;
+    raiseWall(row,c,4);
+  }
 }
 function bossTouch(x,y){
   if(!boss||!boss.ready) return false;
+  if(boss.kind===103){
+    for(const tw of boss.twins)
+      if(!tw.dead&&dist2(x,y,tw.x,tw.y)<22*22) return true;
+    return false;
+  }
   if(boss.kind>=100){
     for(const ox of [-58,0,58])
       if(dist2(x,y,boss.x+ox,boss.y)<27*27) return true;
+    return false;
+  }
+  if(boss.kind===5){
+    if(boss.hidden) return false;
+    for(const s of boss.segs)
+      if(s&&dist2(x,y,s.x,s.y)<16*16) return true;
+    return false;
+  }
+  if(boss.kind===4||boss.kind===7){
+    for(const ox of [-52,0,52])
+      if(dist2(x,y,boss.x+ox,boss.y+4)<30*30) return true;
     return false;
   }
   return dist2(x,y,boss.x,boss.y+8)<62*62;
@@ -1016,7 +1210,8 @@ function startGame(){
   }
   P.x=W/2-(P2?28:0); if(P2) P2.x=W/2+28;
   enemies=[]; pbul=[]; ebul=[]; pickups=[]; fx=[]; parts=[]; popups=[]; bombQ=[];
-  dst=0; evIdx=0; levelLen=2600; boss=null;
+  lobs=[]; flood=0; floodOn=false; ventT=0; tempWalls=[];
+  dst=0; evIdx=0; levelLen=ALEN[1]; boss=null;
   events=buildLevel(1).concat(terrainEvents()).sort((a,b)=>a.d-b.d);
   shake=0; flash=0; bombSuppress=0; hitStop=0;
   deathsThisArea=0; bestChain=0; podsKilled=0; tally=null; midDone=false;
@@ -1027,10 +1222,15 @@ function startGame(){
 function nextLoop(){
   if(area===1){ area=2; msg('AREA 2  —  RUST BELT',2.5); }
   else if(area===2){ area=3; msg('AREA 3  —  BLACKOUT SECTOR',2.5); }
+  else if(area===3){ area=4; msg('AREA 4  —  FLOODED DOCKS',2.5); }
+  else if(area===4){ area=5; msg('AREA 5  —  WASTELAND',2.5); }
+  else if(area===5){ area=6; msg('AREA 6  —  THE STOCKADE',2.5); }
+  else if(area===6){ area=7; msg('FINAL ASSAULT — REACH THE CARRIER',2.8); }
   else{ area=1; loop++; msg('LOOP '+loop+'  —  ENEMY REINFORCED',2.5); }
   enemies=[]; pbul=[]; ebul=[]; pickups=[]; bombQ=[];
+  lobs=[]; flood=0; floodOn=false; ventT=0; tempWalls=[];
   dst=0; evIdx=0; boss=null;
-  levelLen=area===1?2600:area===2?2800:3000;
+  levelLen=ALEN[area];
   events=buildLevel(area).concat(terrainEvents()).sort((a,b)=>a.d-b.d);
   deathsThisArea=0; bestChain=0; podsKilled=0; tally=null; midDone=false;
   buildPlats();
@@ -1120,9 +1320,18 @@ function useBomb(pl){
   }
   enemies=enemies.filter(e=>!e.dead);
   if(boss&&boss.ready){
-    boss.hp-=25; boss.flash=0.2;
-    for(const pod of boss.pods) if(pod.hp>0) pod.hp-=15;
+    if(boss.kind===103){
+      for(const tw of boss.twins) if(!tw.dead){
+        tw.hp-=12;
+        if(tw.hp<=0){ tw.dead=true; boomFx(tw.x,tw.y,true); sfx.bigBoom(); addScore(1500); popup(tw.x,tw.y,'+1500'); }
+      }
+      boss.flash=0.2;
+    }else if(!(boss.kind===5&&boss.hidden)){ // can't bomb the burrowed wyrm
+      boss.hp-=25; boss.flash=0.2;
+      for(const pod of boss.pods) if(pod.hp>0) pod.hp-=15;
+    }
   }
+  lobs=[];
   bombQ=[];
   for(let i=0;i<6;i++)
     bombQ.push({x:30+Math.random()*(W-60),y:60+Math.random()*(H-170),d:0.06+i*0.09});
@@ -1203,6 +1412,11 @@ function updatePlayerFor(pl,inp,dt){
   if(tt==='convL'||tt==='convR'){
     const px2=clamp(pl.x+(tt==='convR'?44:-44)*dt,10,W-10);
     if(!solidAt(px2,pl.y)) pl.x=px2;
+  }
+  // bilge current shove (Dredger vents)
+  if(ventT>0&&pl.y>H*0.42){
+    const px3=clamp(pl.x+ventPush*40*dt,10,W-10);
+    if(!solidAt(px3,pl.y)) pl.x=px3;
   }
   // wall scrolled onto player: shoved down; crushed at the bottom edge
   if(solidAt(pl.x,pl.y)){
@@ -1410,13 +1624,21 @@ function updateBoss(dt){
   b.t+=dt;
   b.flash=Math.max(0,(b.flash||0)-dt);
   if(!b.ready){
+    if(b.kind===5){ // the wyrm is already beneath you
+      b.ready=true; b.hidden=true; b.x=W/2; b.y=60;
+      msg('WARNING — SAND WYRM',2.2);
+      shake=5; sfx.warn();
+      return;
+    }
     b.y+=dt*44;
     const ty=b.kind>=100?76:95;
     if(b.y>=ty){
       b.y=ty; b.ready=true;
       msg({1:'WARNING — CORE FORTRESS',2:'WARNING — SIEGE CRAWLER',
-        3:'WARNING — NIGHT HARRIER',
-        101:'WARNING — SENTRY GATE',102:'WARNING — DRILL BARGE'}[b.kind],2.2);
+        3:'WARNING — NIGHT HARRIER',4:'WARNING — THE DREDGER',
+        6:'WARNING — THE WARDEN',7:'WARNING — CARRIER ASHFALL',
+        101:'WARNING — SENTRY GATE',102:'WARNING — DRILL BARGE',
+        103:'WARNING — GEMINI INTERCEPTORS'}[b.kind],2.2);
     }
     return;
   }
@@ -1424,7 +1646,7 @@ function updateBoss(dt){
   const alivePods=b.pods.filter(p=>p.hp>0);
   // movement phase: below 55% HP, main bosses periodically dive down-screen
   let diving=false;
-  if(b.kind<100){
+  if(b.kind<=3){
     if(b.mode===undefined){ b.mode='hold'; b.moveT=4; }
     b.moveT-=dt;
     if(b.mode==='hold'){
@@ -1499,6 +1721,201 @@ function updateBoss(dt){
           eShoot(b.x,b.y+12,b.spir+Math.PI,100*k);
           b.at3=0.11;
         }
+      }
+    }
+  }else if(b.kind===4){ // THE DREDGER — depth charges, currents, rising water
+    b.x=W/2+Math.sin(b.t*0.35)*54;
+    floodOn=frac<=0.4;
+    if(floodOn&&!b.warned){ b.warned=1; msg('HULL BREACH — DECK FLOODING',2); sfx.warn(); }
+    if(bombSuppress<=0&&anyAlive()){
+      b.at1-=dt;
+      if(b.at1<=0){
+        const tp=nearestP(b.x,b.y);
+        const n=frac<0.7?3:2;
+        for(let i=0;i<n;i++)
+          lobs.push({x:b.x,y:b.y+12,
+            tx:clamp(tp.x+(Math.random()-0.5)*110,16,W-16),
+            ty:clamp(tp.y+(Math.random()-0.5)*90,150,H-24),
+            t:0,dur:1.5});
+        b.at1=2.4/k;
+      }
+      b.at2-=dt;
+      if(b.at2<=0){ b.vd=-b.vd; ventPush=b.vd; ventT=1.5; b.at2=4.4/k; }
+      b.at3-=dt;
+      if(b.at3<=0){
+        for(const pod of alivePods){
+          const a=aimAng(b.x+pod.dx,b.y+pod.dy);
+          eShoot(b.x+pod.dx,b.y+pod.dy,a,120*k);
+          eShoot(b.x+pod.dx,b.y+pod.dy,a+0.1,100*k);
+        }
+        b.at3=1.7/k;
+      }
+    }
+  }else if(b.kind===5){ // SAND WYRM — erupts along telegraphed lines
+    b.wT-=dt;
+    if(b.wstate==='burrow'){
+      b.x=W/2; b.y=60; b.segs=[];
+      if(!b.path&&b.wT<=1.2){
+        b.runs=(b.runs||0)+1;
+        const side=hash(b.runs*17+loop*7)>0.5;
+        const y1=130+hash(b.runs*29+area)*190, y2=130+hash(b.runs*41+area)*210;
+        const A=side?{x:-24,y:y1}:{x:W+24,y:y1};
+        const B=side?{x:W+24,y:y2}:{x:-24,y:y2};
+        const dx2=B.x-A.x, dy2=B.y-A.y, m=Math.hypot(dx2,dy2);
+        b.path={A,B,nx:-dy2/m,ny:dx2/m};
+      }
+      if(b.wT<=0&&b.path){
+        b.wstate='surface'; b.hidden=false; b.sT=0; b.trail=[];
+        boomFx(b.path.A.x,b.path.A.y,false); sfx.bigBoom(); shake=5;
+        if(bombSuppress<=0)
+          for(let i=0;i<8;i++) eShoot(b.path.A.x,b.path.A.y,i*TAU/8,80*k);
+      }
+    }else{
+      const dur=frac<0.5?2.5:3.3;
+      b.sT+=dt;
+      const q=Math.min(1,b.sT/dur);
+      const pa=b.path;
+      const hx=pa.A.x+(pa.B.x-pa.A.x)*q+pa.nx*Math.sin(q*Math.PI*2)*46;
+      const hy=pa.A.y+(pa.B.y-pa.A.y)*q+pa.ny*Math.sin(q*Math.PI*2)*46;
+      if(b.trail.length) b.heading=Math.atan2(hy-b.trail[0].y,hx-b.trail[0].x);
+      b.trail.unshift({x:hx,y:hy});
+      if(b.trail.length>140) b.trail.pop();
+      b.segs=[];
+      for(let i=0;i<10;i++) b.segs.push(b.trail[Math.min(i*9,b.trail.length-1)]);
+      b.x=hx; b.y=hy;
+      if(Math.random()<0.4)
+        parts.push({kind:'smoke',x:hx+(Math.random()-0.5)*16,y:hy+8,dx:(Math.random()-0.5)*20,dy:-6,t:0,dur:0.5,r:4});
+      if(bombSuppress<=0&&anyAlive()&&q>0.12&&q<0.88){
+        b.at1-=dt;
+        if(b.at1<=0){
+          const a=aimAng(hx,hy);
+          eShoot(hx,hy,a,115*k); eShoot(hx,hy,a+0.14,100*k);
+          b.at1=1.15/k;
+        }
+      }
+      if(q>=1){
+        boomFx(pa.B.x,pa.B.y,false); shake=4;
+        if(bombSuppress<=0)
+          for(let i=0;i<8;i++) eShoot(pa.B.x,pa.B.y,i*TAU/8+0.4,80*k);
+        b.hidden=true; b.wstate='burrow'; b.path=null; b.segs=[];
+        b.wT=frac<0.5?1.7:2.5;
+      }
+    }
+  }else if(b.kind===6){ // THE WARDEN — cages you in raised barriers
+    b.x=W/2+Math.sin(b.t*0.5)*40;
+    const exposed=alivePods.length===0;
+    if(exposed&&!b.exMsg){ b.exMsg=1; msg('CORE EXPOSED!',1.6); tempWalls=[]; }
+    if(bombSuppress<=0&&anyAlive()){
+      if(!exposed){
+        b.at1-=dt;
+        if(b.at1<=0){
+          ringWalls(nearestP(b.x,b.y));
+          sfx.warn();
+          b.volley=1.0;
+          b.at1=6/k;
+        }
+        if(b.volley>0){
+          b.volley-=dt;
+          if(b.volley<=0)
+            for(const pod of alivePods){
+              const a=aimAng(b.x+pod.dx,b.y+pod.dy);
+              for(const o of [-0.15,0,0.15]) eShoot(b.x+pod.dx,b.y+pod.dy,a+o,112*k);
+            }
+        }
+        if(frac<=0.7){
+          b.at2-=dt;
+          if(b.at2<=0){
+            lineWalls();
+            for(let x=12;x<W;x+=18) eShoot(x,b.y+28,Math.PI/2,78*k);
+            b.at2=5.6/k;
+          }
+        }
+      }else{
+        b.at3-=dt;
+        if(b.at3<=0){
+          b.spir+=0.55;
+          eShoot(b.x,b.y+14,b.spir,105*k);
+          eShoot(b.x,b.y+14,b.spir+Math.PI,105*k);
+          b.at3=0.12;
+        }
+      }
+    }
+  }else if(b.kind===7){ // THE CARRIER — shield drops only for launch windows
+    b.x=W/2+Math.sin(b.t*0.3)*36;
+    const gensAlive=alivePods.length>0;
+    b.launchT-=dt;
+    if(b.open>0){
+      b.open-=dt;
+      b.doorQ=Math.min(1,b.doorQ+dt*4);
+      if(!b.spawned){
+        b.spawned=true;
+        if(enemies.length<9&&gensAlive){
+          spawnE('grunt',b.x-28,{y:b.y+46});
+          spawnE('drone',b.x+28,{y:b.y+42});
+          if(frac<0.5) spawnE('grunt',b.x,{y:b.y+50});
+        }
+      }
+      if(b.open<=0){ b.launchT=(frac<0.5?3.0:4.2)/k; b.spawned=false; }
+    }else{
+      b.doorQ=Math.max(0,b.doorQ-dt*3);
+      if(b.launchT<=0&&gensAlive) b.open=1.7;
+    }
+    b.shielded=gensAlive&&b.open<=0;
+    if(!gensAlive&&!b.gMsg){ b.gMsg=1; msg('SHIELD GENERATORS DOWN!',1.8); }
+    if(bombSuppress<=0&&anyAlive()){
+      b.at1-=dt;
+      if(b.at1<=0){
+        for(const ox of [-22,22]){
+          const a=aimAng(b.x+ox,b.y+32);
+          eShoot(b.x+ox,b.y+32,a,118*k);
+          eShoot(b.x+ox,b.y+32,a,96*k);
+        }
+        b.at1=1.5/k;
+      }
+      if(frac<=0.5){
+        b.at2-=dt;
+        if(b.at2<=0){
+          for(let i=-5;i<=5;i++) eShoot(b.x,b.y+36,Math.PI/2+i*0.16,(86+Math.abs(i)*6)*k);
+          b.at2=3.2/k;
+        }
+      }
+      if(frac<=0.25){
+        b.at3-=dt;
+        if(b.at3<=0){
+          if(enemies.length<9) spawnE('grunt',clamp(b.x+(Math.random()-0.5)*80,20,W-20),{y:b.y+50});
+          b.at3=3/k;
+        }
+      }
+    }
+  }else if(b.kind===103){ // GEMINI INTERCEPTORS — survivor enrages
+    const en2=b.twins.filter(t2=>!t2.dead);
+    b.hp=b.twins.reduce((s,t2)=>s+Math.max(0,t2.hp),0);
+    const enr=en2.length===1;
+    const sp=enr?1.45:1;
+    b.twins.forEach((tw,i)=>{
+      if(tw.dead) return;
+      const s=i===0?-1:1;
+      tw.x=W/2+s*Math.sin(b.t*0.9*sp)*70;
+      tw.y=82+Math.sin(b.t*1.8*sp+(i?Math.PI:0))*26;
+    });
+    if(bombSuppress<=0&&anyAlive()){
+      b.at1-=dt;
+      if(b.at1<=0){
+        for(const tw of en2){
+          const a=aimAng(tw.x,tw.y);
+          eShoot(tw.x,tw.y,a,120*k);
+          eShoot(tw.x,tw.y,a+0.12,105*k);
+          if(enr) eShoot(tw.x,tw.y,a-0.12,105*k);
+        }
+        b.at1=(enr?1.0:1.6)/k;
+      }
+      b.at2-=dt;
+      if(b.at2<=0){
+        for(const tw of en2){
+          const inw=tw.x<W/2?0.5:-0.5;
+          for(let j=-2;j<=2;j++) eShoot(tw.x,tw.y,Math.PI/2+inw+j*0.14,95*k);
+        }
+        b.at2=3.4/k;
       }
     }
   }else if(b.kind===101){ // SENTRY GATE — emitters alternate aimed spreads
@@ -1583,6 +2000,7 @@ function updateBoss(dt){
       return;
     }
     boss=null;
+    floodOn=false; tempWalls=[]; lobs=[]; ventT=0;
     addScore(10000); popup(b.x,b.y,'+10000');
     jingle(); buzz([120,60,120]);
     for(let i=0;i<7;i++)
@@ -1616,9 +2034,10 @@ function updateWorld(dt){
   if(!boss){
     dst+=scrollSpd*dt;
     while(evIdx<events.length&&events[evIdx].d<=dst){ events[evIdx].f(); evIdx++; }
-    if(state==='play'&&!midDone&&dst>=levelLen*0.55){ // halfway checkpoint gate
+    if(state==='play'&&!midDone&&area<7&&dst>=levelLen*0.55){ // halfway checkpoint
       midDone=true;
-      boss=makeBoss(area===2?102:101);
+      const gemini=loop>=2&&hash(loop*131+area*17)>0.5; // loop 2+: twins may ambush instead
+      boss=makeBoss(gemini?103:(area===2?102:101));
       bossDropT=18;
     }
     if(state==='play'&&evIdx>=events.length&&dst>=levelLen&&enemies.length===0){
@@ -1654,6 +2073,39 @@ function updateWorld(dt){
     pl.x=clamp(pl.x0+Math.sin(gameT*pl.sp+pl.ph)*pl.range,26,W-26);
   }
 
+  // arcing shells (Dredger depth charges)
+  for(const l of lobs){
+    l.t+=dt;
+    if(l.t>=l.dur){
+      l.done=true;
+      boomFx(l.tx,l.ty,false); sfx.boom(); shake=Math.max(shake,3);
+      if(bombSuppress<=0)
+        for(let i=0;i<6;i++) eShoot(l.tx,l.ty,i*TAU/6+0.5,85*diffScale());
+      for(const pl of players())
+        if(pl.alive&&pl.invuln<=0&&dist2(l.tx,l.ty,pl.x,pl.y)<20*20) playerHit(pl);
+    }
+  }
+  lobs=lobs.filter(l=>!l.done);
+
+  // rising barriers (Warden)
+  if(tempWalls.length){
+    for(const w of tempWalls){
+      const was=w.t; w.t+=dt;
+      if(was<0.5&&w.t>=0.5){
+        sfx.thud();
+        const off2=dst%TS, baseRow2=Math.floor(dst/TS);
+        const yy=(baseRow2+16-w.wr)*TS+off2+16;
+        for(let i=0;i<3;i++)
+          parts.push({kind:'smoke',x:w.c*TS+16,y:yy,dx:(Math.random()-0.5)*26,dy:-10,t:0,dur:0.5,r:4});
+      }
+    }
+    tempWalls=tempWalls.filter(w=>w.t<w.life);
+  }
+
+  // bilge currents + deck flood (Dredger)
+  if(ventT>0) ventT-=dt;
+  flood=clamp(flood+((floodOn&&boss)?0.7:-0.7)*dt,0,1);
+
   for(const f of fx) f.t+=dt;
   fx=fx.filter(f=>f.t<f.dur);
   for(const p of parts){
@@ -1677,35 +2129,89 @@ function updateWorld(dt){
   for(const b of pbul){
     // boss pods first (destructible), then core
     if(boss&&boss.ready){
-      let podHit=false;
-      for(const pod of boss.pods){
-        if(pod.hp>0&&dist2(b.x,b.y,boss.x+pod.dx,boss.y+pod.dy)<13*13){
-          pod.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.05);
+      if(boss.kind===103){ // twins take hits individually
+        let done=false;
+        for(const tw of boss.twins){
+          if(tw.dead||dist2(b.x,b.y,tw.x,tw.y)>=20*20) continue;
+          tw.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.06);
           if(!b.pierce) b.gone=true;
-          sfx.hit(); podHit=true; ST.hits++;
-          if(pod.hp<=0){
-            boomFx(boss.x+pod.dx,boss.y+pod.dy,true);
-            sfx.bigBoom(); shake=6;
+          sfx.hit(); ST.hits++;
+          if(tw.hp<=0){
+            tw.dead=true;
+            boomFx(tw.x,tw.y,true); sfx.bigBoom(); shake=6;
             hitStop=Math.min(0.08,hitStop+0.06);
-            podsKilled++;
-            addScore(2000); popup(boss.x+pod.dx,boss.y+pod.dy,'+2000');
+            addScore(1500); popup(tw.x,tw.y,'+1500');
+            if(boss.twins.some(z=>!z.dead)) msg('ENRAGED!',1.2);
           }
-          break;
+          done=true; break;
         }
-      }
-      if(podHit) continue;
-      let coreHit;
-      if(boss.kind>=100){ // wide gate hull — three segments
-        coreHit=false;
-        for(const ox of [-58,0,58])
-          if(dist2(b.x,b.y,boss.x+ox,boss.y)<23*23){ coreHit=true; break; }
-      }else coreHit=dist2(b.x,b.y,boss.x,boss.y+8)<58*58;
-      if(coreHit){
-        boss.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.08);
-        if(!b.pierce) b.gone=true;
-        sfx.hit(); ST.hits++;
-        parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*60,dy:50,t:0,dur:0.2,c:'#fff'});
-        continue;
+        if(done) continue;
+      }else if(boss.kind===5){ // wyrm: armored body, soft tail node
+        if(!boss.hidden&&boss.segs.length){
+          const tail=boss.segs[boss.segs.length-1];
+          if(tail&&dist2(b.x,b.y,tail.x,tail.y)<14*14){
+            boss.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.08);
+            if(!b.pierce) b.gone=true;
+            sfx.hit(); ST.hits++;
+            parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*60,dy:40,t:0,dur:0.2,c:'#fff'});
+            continue;
+          }
+          let blocked=false;
+          for(let i=0;i<boss.segs.length-1;i++){
+            const s=boss.segs[i];
+            if(s&&dist2(b.x,b.y,s.x,s.y)<13*13){ blocked=true; break; }
+          }
+          if(blocked){
+            if(!b.pierce){
+              b.gone=true; sfx.clink();
+              parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*80,dy:-20,t:0,dur:0.16,c:'#e8d8b0'});
+            }
+            continue;
+          }
+        }
+      }else{
+        let podHit=false;
+        for(const pod of boss.pods){
+          if(pod.hp>0&&dist2(b.x,b.y,boss.x+pod.dx,boss.y+pod.dy)<13*13){
+            pod.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.05);
+            if(!b.pierce) b.gone=true;
+            sfx.hit(); podHit=true; ST.hits++;
+            if(pod.hp<=0){
+              boomFx(boss.x+pod.dx,boss.y+pod.dy,true);
+              sfx.bigBoom(); shake=6;
+              hitStop=Math.min(0.08,hitStop+0.06);
+              podsKilled++;
+              addScore(2000); popup(boss.x+pod.dx,boss.y+pod.dy,'+2000');
+            }
+            break;
+          }
+        }
+        if(podHit) continue;
+        let coreHit;
+        if(boss.kind>=100){ // wide gate hull — three segments
+          coreHit=false;
+          for(const ox of [-58,0,58])
+            if(dist2(b.x,b.y,boss.x+ox,boss.y)<23*23){ coreHit=true; break; }
+        }else if(boss.kind===4||boss.kind===7){ // wide ships
+          coreHit=false;
+          for(const ox of [-52,0,52])
+            if(dist2(b.x,b.y,boss.x+ox,boss.y+4)<26*26){ coreHit=true; break; }
+        }else coreHit=dist2(b.x,b.y,boss.x,boss.y+8)<58*58;
+        if(coreHit){
+          const guarded=(boss.kind===6&&boss.pods.some(pp=>pp.hp>0))
+                      ||(boss.kind===7&&boss.shielded);
+          if(guarded){ // hard shield: pinged off
+            if(!b.pierce) b.gone=true;
+            sfx.clink();
+            parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*80,dy:-30,t:0,dur:0.18,c:'#9fe1ff'});
+            continue;
+          }
+          boss.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.08);
+          if(!b.pierce) b.gone=true;
+          sfx.hit(); ST.hits++;
+          parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*60,dy:50,t:0,dur:0.2,c:'#fff'});
+          continue;
+        }
       }
     }
     for(const e of enemies){
@@ -1846,7 +2352,7 @@ function renderDarkness(){
 }
 
 function drawBG(){
-  const T=TILESETS[area-1];
+  const T=TILESETS[AREA_PAL[area]];
   const cols=Math.ceil(W/TS);
   const off=dst%TS, baseRow=Math.floor(dst/TS), rows=Math.ceil(H/TS)+1;
   for(let ry=-1;ry<rows;ry++){
@@ -2368,10 +2874,56 @@ function drawPods(b){
   }
 }
 
+function bossBar(frac,c0,c1,gname){
+  ctx.fillStyle='rgba(6,10,16,0.72)'; rrFill(18,22,W-36,9,4);
+  const gr2=ctx.createLinearGradient(20,0,W-20,0);
+  gr2.addColorStop(0,c0); gr2.addColorStop(1,c1);
+  ctx.fillStyle=gr2; rrFill(20,23.5,(W-40)*Math.max(0,frac),6,3);
+  if(frac>0.02&&gname) glow(20+(W-40)*frac,26.5,14,gname,0.6);
+  ctx.strokeStyle='rgba(255,255,255,0.18)'; rrPath(ctx,18,22,W-36,9,4); ctx.stroke();
+}
 function drawBoss(){
   const b=boss;
   const frac=Math.max(0,b.hp/b.maxHp);
   ctx.save(); ctx.translate(b.x,b.y);
+  if(b.kind===103){ // GEMINI INTERCEPTORS
+    ctx.restore();
+    const en2=b.twins.filter(t2=>!t2.dead);
+    const enr=en2.length===1;
+    b.twins.forEach((tw,i)=>{
+      if(tw.dead) return;
+      ctx.save(); ctx.translate(tw.x,tw.y);
+      // engine wash
+      glow(0,16,22,i===0?'cyan':'orange',0.5+0.2*Math.sin(perf*20+i));
+      if(enr) glow(0,0,54,'red',0.35+0.2*Math.sin(perf*9));
+      // fuselage
+      let gr=ctx.createLinearGradient(0,-16,0,16);
+      if(i===0){ gr.addColorStop(0,b.flash>0?'#cfe0ec':'#4e6a80'); gr.addColorStop(1,'#1c2c3a'); }
+      else{ gr.addColorStop(0,b.flash>0?'#ecd8c0':'#8a5c34'); gr.addColorStop(1,'#3a2412'); }
+      ctx.fillStyle=gr;
+      ctx.beginPath();
+      ctx.moveTo(0,-18); ctx.lineTo(7,-4); ctx.lineTo(6,14); ctx.lineTo(-6,14); ctx.lineTo(-7,-4);
+      ctx.closePath(); ctx.fill();
+      // wings
+      ctx.fillStyle=i===0?'#2c4050':'#503018';
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(-22,10); ctx.lineTo(-18,14); ctx.lineTo(-5,8); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(6,0); ctx.lineTo(22,10); ctx.lineTo(18,14); ctx.lineTo(5,8); ctx.closePath(); ctx.fill();
+      // canopy
+      ctx.fillStyle='rgba(140,220,255,0.5)';
+      ctx.beginPath(); ctx.ellipse(0,-6,3,5.5,0,0,TAU); ctx.fill();
+      // wingtip strobes
+      const st=Math.floor(perf*4+i)%2;
+      ctx.fillStyle=st?'#ff5050':'#3a1418'; ctx.fillRect(-21,9,3,3);
+      ctx.fillStyle=st?'#183a20':'#5aff8a'; ctx.fillRect(18,9,3,3);
+      // per-twin health pip bar
+      ctx.fillStyle='rgba(6,10,16,0.7)'; rrFill(-14,-26,28,4,2);
+      ctx.fillStyle=enr?'#ff7050':(i===0?'#8cc0ff':'#ffb050');
+      rrFill(-14,-26,28*Math.max(0,tw.hp/110),4,2);
+      ctx.restore();
+    });
+    if(b.ready) bossBar(frac,'#8cc0ff','#ffb050','white');
+    return;
+  }
   if(b.kind>=100){ // mid-boss gate machines
     const rust=b.kind===102;
     ctx.fillStyle='rgba(0,0,0,0.35)';
@@ -2430,6 +2982,258 @@ function drawBoss(){
       ctx.fillStyle=gr2; rrFill(20,23.5,(W-40)*frac,6,3);
       ctx.strokeStyle='rgba(255,255,255,0.18)'; rrPath(ctx,18,22,W-36,9,4); ctx.stroke();
     }
+    return;
+  }
+  if(b.kind===4){ // THE DREDGER — harvester barge
+    // hull wake
+    ctx.strokeStyle='rgba(200,240,255,0.30)'; ctx.lineWidth=2; ctx.setLineDash([5,7]);
+    ctx.lineDashOffset=-perf*30;
+    ctx.beginPath(); ctx.moveTo(-76,20); ctx.lineTo(-88,46); ctx.moveTo(76,20); ctx.lineTo(88,46); ctx.stroke();
+    ctx.setLineDash([]);
+    let gr=ctx.createLinearGradient(0,-34,0,46);
+    gr.addColorStop(0,b.flash>0?'#c8dae6':'#4e6478');
+    gr.addColorStop(1,b.flash>0?'#9cb4c4':'#22303e');
+    ctx.fillStyle=gr;
+    ctx.beginPath();
+    ctx.moveTo(-72,-34); ctx.lineTo(72,-34); ctx.lineTo(72,18); ctx.lineTo(0,46); ctx.lineTo(-72,18);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(180,220,255,0.16)'; ctx.stroke();
+    // deck plating + cargo hatch
+    ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1;
+    for(const gy of [-20,-4,10]){ ctx.beginPath(); ctx.moveTo(-66,gy); ctx.lineTo(66,gy); ctx.stroke(); }
+    ctx.fillStyle='rgba(0,0,0,0.28)'; rrFill(-14,-28,28,16,2);
+    ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(-14,-28,28,2);
+    ctx.fillStyle='#8aa4ba';
+    for(let i=0;i<6;i++){ ctx.fillRect(-60+i*24,-32,1.8,1.8); ctx.fillRect(-60+i*24,14,1.8,1.8); }
+    // loading cranes
+    for(const sx of [-44,44]){
+      ctx.fillStyle='#1a242e'; ctx.fillRect(sx-3,-26,6,10);
+      ctx.strokeStyle='#68829a'; ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.moveTo(sx,-22); ctx.lineTo(sx+(sx<0?-16:16),-42); ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(sx+(sx<0?-16:16),-42); ctx.lineTo(sx+(sx<0?-16:16),-30); ctx.stroke();
+    }
+    // stack + smoke
+    ctx.fillStyle='#141c24'; rrFill(24,-18,12,14,2);
+    ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.fillRect(24,-18,12,2);
+    if(Math.random()<0.2)
+      parts.push({kind:'smoke',x:b.x+30,y:b.y-20,dx:(Math.random()-0.5)*8,dy:-16,t:0,dur:1.1,r:5});
+    // deck gun pods
+    for(const pod of b.pods){
+      ctx.save(); ctx.translate(pod.dx,pod.dy);
+      if(pod.hp>0){
+        const tp2=nearestP(b.x+pod.dx,b.y+pod.dy);
+        const ca=Math.atan2(tp2.y-(b.y+pod.dy),tp2.x-(b.x+pod.dx));
+        const pg=ctx.createRadialGradient(-3,-3,1,0,0,12);
+        pg.addColorStop(0,'#9cc0da'); pg.addColorStop(1,'#2c3e50');
+        ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(0,0,11,0,TAU); ctx.fill();
+        ctx.rotate(ca);
+        ctx.fillStyle='#c2d8e8'; ctx.fillRect(0,-2.6,15,5.2);
+        ctx.fillStyle='#22303e'; ctx.fillRect(13,-3.2,3,6.4);
+        if(b.ready&&b.at3<0.35) glow(16,0,18,'blue',(0.35-b.at3)/0.35);
+      }else{
+        ctx.fillStyle='#0c141c'; ctx.beginPath(); ctx.arc(0,0,9,0,TAU); ctx.fill();
+        glow(0,0,14,'orange',0.2+0.3*Math.random());
+      }
+      ctx.restore();
+    }
+    // bridge beacon
+    const pulse4=0.5+0.5*Math.sin(b.t*5);
+    glow(0,-10,40+pulse4*10,'blue',0.4);
+    const cg4=ctx.createRadialGradient(0,-10,1,0,-10,9);
+    cg4.addColorStop(0,'#eaffff'); cg4.addColorStop(1,'#2a6a9a');
+    ctx.fillStyle=cg4; ctx.beginPath(); ctx.arc(0,-10,8,0,TAU); ctx.fill();
+    if(b.flash>0){
+      ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1,b.flash*6);
+      ctx.fillStyle='#fff'; ctx.fillRect(-72,-34,144,80); ctx.restore();
+    }
+    ctx.restore();
+    if(b.ready) bossBar(frac,'#8cc0ff','#2a5aa8','blue');
+    return;
+  }
+  if(b.kind===5){ // SAND WYRM — drawn in world space
+    ctx.restore();
+    if(b.hidden&&b.path&&b.wT<=1.2){ // eruption telegraph
+      const pa=b.path;
+      ctx.save(); ctx.setLineDash([7,7]); ctx.lineDashOffset=-perf*40;
+      ctx.strokeStyle='rgba(255,190,90,'+(0.35+0.3*Math.sin(perf*10))+')';
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(pa.A.x,pa.A.y);
+      for(let q=0.08;q<=1.001;q+=0.08){
+        ctx.lineTo(pa.A.x+(pa.B.x-pa.A.x)*q+pa.nx*Math.sin(q*Math.PI*2)*46,
+                   pa.A.y+(pa.B.y-pa.A.y)*q+pa.ny*Math.sin(q*Math.PI*2)*46);
+      }
+      ctx.stroke(); ctx.restore();
+      glow(pa.A.x,pa.A.y,30,'orange',0.5+0.3*Math.sin(perf*12));
+      if(Math.random()<0.4){
+        const q=Math.random();
+        parts.push({kind:'smoke',
+          x:pa.A.x+(pa.B.x-pa.A.x)*q+pa.nx*Math.sin(q*Math.PI*2)*46,
+          y:pa.A.y+(pa.B.y-pa.A.y)*q+pa.ny*Math.sin(q*Math.PI*2)*46,
+          dx:(Math.random()-0.5)*10,dy:-8,t:0,dur:0.5,r:3});
+      }
+    }
+    if(!b.hidden&&b.segs.length){
+      for(let i=b.segs.length-1;i>=0;i--){
+        const s=b.segs[i]; if(!s) continue;
+        const head=i===0, tail=i===b.segs.length-1;
+        const r=head?15:13-i*0.25;
+        const gr5=ctx.createRadialGradient(s.x-3,s.y-4,1,s.x,s.y,r);
+        gr5.addColorStop(0,b.flash>0&&tail?'#fff':'#d8b878');
+        gr5.addColorStop(0.6,'#8a6a3a'); gr5.addColorStop(1,'#4a3418');
+        ctx.fillStyle=gr5;
+        ctx.beginPath(); ctx.arc(s.x,s.y,r,0,TAU); ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=1.2;
+        ctx.beginPath(); ctx.arc(s.x,s.y,r*0.62,0,TAU); ctx.stroke();
+        ctx.fillStyle='rgba(255,255,255,0.15)';
+        ctx.beginPath(); ctx.arc(s.x-r*0.3,s.y-r*0.35,r*0.3,0,TAU); ctx.fill();
+        if(head){
+          ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(b.heading);
+          ctx.fillStyle='#3a2a12'; // mandibles
+          ctx.beginPath(); ctx.moveTo(10,-8); ctx.lineTo(22,-3); ctx.lineTo(12,-2); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(10,8); ctx.lineTo(22,3); ctx.lineTo(12,2); ctx.closePath(); ctx.fill();
+          ctx.fillStyle='#ff6a4a'; // eyes
+          ctx.beginPath(); ctx.arc(6,-6,2.2,0,TAU); ctx.fill();
+          ctx.beginPath(); ctx.arc(6,6,2.2,0,TAU); ctx.fill();
+          ctx.restore();
+          glow(s.x,s.y,26,'red',0.35);
+        }
+        if(tail){ // the soft node
+          glow(s.x,s.y,36,'magenta',0.6+0.3*Math.sin(perf*8));
+          const cg5=ctx.createRadialGradient(s.x,s.y,1,s.x,s.y,8);
+          cg5.addColorStop(0,'#fff'); cg5.addColorStop(0.5,'#ffb8ec'); cg5.addColorStop(1,'#b03080');
+          ctx.fillStyle=cg5;
+          ctx.beginPath(); ctx.arc(s.x,s.y,7,0,TAU); ctx.fill();
+        }
+      }
+    }
+    if(b.ready) bossBar(frac,'#ffd24a','#c07a10','yellow');
+    return;
+  }
+  if(b.kind===6){ // THE WARDEN — barrier fortress
+    const exposed=!b.pods.some(pp=>pp.hp>0);
+    let gr=ctx.createLinearGradient(0,-26,0,30);
+    gr.addColorStop(0,b.flash>0?'#cdd4e2':'#5a6478');
+    gr.addColorStop(1,b.flash>0?'#9aa4b8':'#252c3c');
+    ctx.fillStyle=gr; rrFill(-84,-26,168,52,7);
+    ctx.strokeStyle='rgba(255,255,255,0.12)'; rrPath(ctx,-84,-26,168,52,7); ctx.stroke();
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    for(const gx of [-60,-30,30,60]) ctx.fillRect(gx,-20,3,40);
+    ctx.fillStyle='#8a94ac';
+    for(let i=0;i<9;i++){ ctx.fillRect(-78+i*19,-23,1.8,1.8); ctx.fillRect(-78+i*19,20,1.8,1.8); }
+    // siren sweep
+    const sw=Math.sin(perf*4);
+    glow(-70+sw*140,-20,16,'red',0.5);
+    ctx.fillStyle='#ff5050'; ctx.fillRect(-72+sw*140,-22,4,3);
+    // pylons
+    for(const pod of b.pods){
+      ctx.save(); ctx.translate(pod.dx,pod.dy);
+      if(pod.hp>0){
+        const pg=ctx.createLinearGradient(0,-14,0,10);
+        pg.addColorStop(0,'#9aa8c4'); pg.addColorStop(1,'#333c52');
+        ctx.fillStyle=pg; rrFill(-5,-14,10,24,3);
+        ctx.strokeStyle='rgba(0,0,0,0.3)';
+        for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-5,-9+i*7); ctx.lineTo(5,-9+i*7); ctx.stroke(); }
+        const chg=b.at1<1.2?(1.2-b.at1)/1.2:0;
+        ctx.fillStyle=chg>0?'#ffe9a8':'#8fd4ff';
+        ctx.beginPath(); ctx.arc(0,-14,3.4,0,TAU); ctx.fill();
+        glow(0,-14,14,chg>0?'yellow':'cyan',0.4+chg*0.5);
+      }else{
+        ctx.fillStyle='#141824'; rrFill(-5,-8,10,18,3);
+        glow(0,0,12,'orange',0.2+0.3*Math.random());
+      }
+      ctx.restore();
+    }
+    // core eye
+    const pulse6=0.5+0.5*Math.sin(b.t*6);
+    if(exposed){
+      glow(0,2,60+pulse6*18,'red',0.55);
+      const cg6=ctx.createRadialGradient(0,2,1,0,2,13+pulse6*2);
+      cg6.addColorStop(0,'#fff'); cg6.addColorStop(0.4,'#ffb0a0'); cg6.addColorStop(1,'#b02020');
+      ctx.fillStyle=cg6;
+      ctx.beginPath(); ctx.arc(0,2,12+pulse6*2,0,TAU); ctx.fill();
+    }else{ // shuttered
+      ctx.fillStyle='#1a2030'; rrFill(-14,-8,28,20,4);
+      ctx.fillStyle='rgba(255,255,255,0.1)';
+      for(let i=0;i<3;i++) ctx.fillRect(-11,-4+i*6,22,2);
+      glow(0,2,26,'red',0.2+0.1*pulse6);
+    }
+    ctx.restore();
+    if(b.ready) bossBar(frac,'#ff8080','#b02020','red');
+    return;
+  }
+  if(b.kind===7){ // THE CARRIER — flag deck
+    // shield bubble
+    if(b.shielded){
+      ctx.save(); ctx.globalCompositeOperation='lighter';
+      ctx.globalAlpha=0.30+0.12*Math.sin(perf*6);
+      ctx.strokeStyle='#9fe1ff'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.ellipse(0,6,92,64,0,0,TAU); ctx.stroke();
+      ctx.globalAlpha=0.10;
+      ctx.fillStyle='#9fe1ff';
+      ctx.beginPath(); ctx.ellipse(0,6,92,64,0,0,TAU); ctx.fill();
+      ctx.restore();
+    }
+    let gr=ctx.createLinearGradient(0,-42,0,50);
+    gr.addColorStop(0,b.flash>0?'#d0d8e4':'#464f60');
+    gr.addColorStop(1,b.flash>0?'#a0a8b8':'#1c222e');
+    ctx.fillStyle=gr;
+    ctx.beginPath();
+    ctx.moveTo(-64,-42); ctx.lineTo(64,-42); ctx.lineTo(70,36); ctx.lineTo(0,52); ctx.lineTo(-70,36);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(190,215,255,0.14)'; ctx.stroke();
+    // runway markings
+    ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.lineWidth=2; ctx.setLineDash([6,7]);
+    ctx.beginPath(); ctx.moveTo(0,-38); ctx.lineTo(0,-16); ctx.moveTo(0,20); ctx.lineTo(0,46); ctx.stroke();
+    ctx.setLineDash([]);
+    for(let i=0;i<5;i++){ // threshold stripes
+      ctx.fillStyle='rgba(255,255,255,0.16)';
+      ctx.fillRect(-30+i*13,42,7,3);
+    }
+    // deck edge lights
+    for(let i=0;i<6;i++){
+      const on=Math.floor(perf*6)%6===i;
+      ctx.fillStyle=on?'#ffe9a8':'#3a4050';
+      ctx.fillRect(-58+i*23,-40,4,3);
+      if(on) glow(-56+i*23,-38,10,'yellow',0.7);
+    }
+    // island tower
+    ctx.fillStyle='#12161e'; rrFill(40,-24,20,34,3);
+    ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.fillRect(40,-24,20,2.4);
+    ctx.save(); ctx.translate(50,-28); ctx.rotate(perf*2.4); // radar
+    ctx.strokeStyle='#9fe1ff'; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.moveTo(-7,0); ctx.lineTo(7,0); ctx.stroke();
+    ctx.restore();
+    // launch bay doors
+    const gap=b.doorQ*16;
+    ctx.fillStyle='#0c1016'; rrFill(-20,-8,40,26,3);
+    ctx.fillStyle='#2c3648';
+    ctx.fillRect(-20,-8,20-gap/2,26); ctx.fillRect(gap/2,-8,20-gap/2,26);
+    ctx.strokeStyle='rgba(216,184,48,0.5)';
+    ctx.strokeRect(-20.5,-8.5,41,27);
+    if(b.doorQ>0.2) glow(0,5,30*b.doorQ,'orange',0.5*b.doorQ);
+    // catapult pods
+    for(const pod of b.pods){
+      ctx.save(); ctx.translate(pod.dx,pod.dy);
+      if(pod.hp>0){
+        const pg=ctx.createLinearGradient(0,-10,0,10);
+        pg.addColorStop(0,'#8a98b0'); pg.addColorStop(1,'#2c3444');
+        ctx.fillStyle=pg; rrFill(-7,-12,14,26,3);
+        ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fillRect(-7,-12,14,2);
+        ctx.fillStyle='#9fe1ff'; ctx.fillRect(-1.4,-12,2.8,26);
+        glow(0,-12,10,'cyan',0.35+0.2*Math.sin(perf*8));
+      }else{
+        ctx.fillStyle='#10141c'; rrFill(-7,-9,14,20,3);
+        glow(0,0,14,'orange',0.2+0.3*Math.random());
+      }
+      ctx.restore();
+    }
+    if(b.flash>0){
+      ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1,b.flash*6);
+      ctx.fillStyle='#fff'; ctx.fillRect(-70,-42,140,94); ctx.restore();
+    }
+    ctx.restore();
+    if(b.ready) bossBar(frac,'#9fe1ff','#2a5aa8','cyan');
     return;
   }
   if(b.kind===1){
@@ -2933,6 +3737,58 @@ function draw(){
     }
   }
 
+  // Dredger flood overlay
+  if(flood>0.02){
+    ctx.fillStyle='rgba(14,53,64,'+(0.5*flood)+')';
+    ctx.fillRect(0,150,W,H-150);
+    if(flood>0.9){
+      const T4=TILESETS[AREA_PAL[area]];
+      for(const isle of ISLES){
+        ctx.drawImage(T4.plate,isle[0]-36,isle[1]-44,72,88);
+        ctx.strokeStyle='rgba(255,255,255,0.25)';
+        rrPath(ctx,isle[0]-36,isle[1]-44,72,88,4); ctx.stroke();
+      }
+    }
+    ctx.fillStyle='rgba(160,230,255,'+(0.10*flood)+')';
+    for(let i=0;i<5;i++){
+      const sy=(perf*12+i*67)%(H-160)+155;
+      ctx.fillRect(20+(i*61)%260,sy,40,1.5);
+    }
+    if(ventT>0){ // bilge current arrows
+      ctx.globalAlpha=0.5;
+      ctx.fillStyle='#bfe9ff';
+      for(let i=0;i<6;i++){
+        const ax=(((perf*90*ventPush)%(W+40))+(W+40))%(W+40)-20;
+        ctx.fillRect((ax+i*55)%(W+40)-20,H*0.55+((i*53)%120),14,2);
+      }
+      ctx.globalAlpha=1;
+    }
+  }
+  // depth-charge landing markers
+  for(const l of lobs){
+    const q=l.t/l.dur;
+    ctx.save(); ctx.globalAlpha=0.85;
+    ctx.strokeStyle=Math.floor(perf*8)%2?'#ff6a4a':'#ffd24a'; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(l.tx,l.ty,16,0,TAU); ctx.stroke();
+    ctx.fillStyle='rgba(255,106,74,0.30)';
+    ctx.beginPath(); ctx.moveTo(l.tx,l.ty);
+    ctx.arc(l.tx,l.ty,16,-Math.PI/2,-Math.PI/2+q*TAU); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // rising barrier ghosts (Warden)
+  if(tempWalls.length){
+    const off2=dst%TS, baseRow2=Math.floor(dst/TS);
+    const T5=TILESETS[AREA_PAL[area]];
+    for(const w of tempWalls){
+      if(w.t>=0.5) continue;
+      const yy=(baseRow2+16-w.wr)*TS+off2;
+      ctx.save(); ctx.globalAlpha=0.3+0.3*Math.sin(perf*14);
+      ctx.drawImage(T5.wall,w.c*TS,yy,TS,TS);
+      ctx.restore();
+      glow(w.c*TS+16,yy+16,26,'red',0.4);
+    }
+  }
+
   for(const p of pickups){
     const cols={E:['green','#52e07a','#1d7a3a'],W:['orange','#ffb050','#c05c0a'],
       B:['blue','#8cc0ff','#2a5aa8'],S:['yellow','#ffe27a','#c09a20'],
@@ -2963,6 +3819,20 @@ function draw(){
   for(const e of enemies) drawEnemy(e);
   if(boss) drawBoss();
   for(const pl of players()) drawPlayer(pl);
+
+  // depth charges in flight
+  for(const l of lobs){
+    const q=l.t/l.dur;
+    const gx=l.x+(l.tx-l.x)*q, gy=l.y+(l.ty-l.y)*q;
+    const sy=gy-Math.sin(q*Math.PI)*80;
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(gx,gy,4,2.4,0,0,TAU); ctx.fill();
+    ctx.fillStyle='#2a3138';
+    ctx.beginPath(); ctx.arc(gx,sy,4.4,0,TAU); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(gx-1.3,sy-1.3,1.5,0,TAU); ctx.fill();
+    glow(gx,sy,10,'orange',0.4);
+  }
 
   for(const b of pbul){
     if(b.flame){
