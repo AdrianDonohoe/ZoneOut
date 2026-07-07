@@ -376,6 +376,9 @@ const vignetteSpr=mkC(W,H,g=>{
 });
 
 //------------------------------------------------- audio
+// Synth engine v2: layered drums, fat dual-osc bass, vibrato leads with echo,
+// detuned pads, one original track per area group, musical bar-boundary
+// transitions and sidechain-style ducking on big hits.
 let AC=null,gMus=null,gSfx=null,noiseBuf=null,muted=false;
 function applyVol(){
   if(gMus) gMus.gain.value=0.5*VOLS[SET.mus];
@@ -394,83 +397,274 @@ function audioInit(){
     musicStart();
   }catch(e){ AC=null; }
 }
-function tone(f0,f1,dur,type,vol,when,mus){
-  if(!AC||muted) return;
-  when=when||AC.currentTime;
+// ---- low-level voices (all take an absolute AudioContext time)
+function vOsc(dest,type,f0,f1,vol,when,dur,att){
+  if(!AC||muted) return null;
   const o=AC.createOscillator(), g=AC.createGain();
-  o.type=type; o.frequency.setValueAtTime(f0,when);
-  if(f1!==f0) o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),when+dur);
-  g.gain.setValueAtTime(vol,when);
+  o.type=type; o.frequency.setValueAtTime(Math.max(1,f0),when);
+  if(f1&&f1!==f0) o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),when+dur);
+  g.gain.setValueAtTime(0.0001,when);
+  g.gain.linearRampToValueAtTime(vol,when+(att||0.004));
   g.gain.exponentialRampToValueAtTime(0.0001,when+dur);
-  o.connect(g); g.connect(mus?gMus:gSfx);
-  o.start(when); o.stop(when+dur+0.02);
+  o.connect(g); g.connect(dest);
+  o.start(when); o.stop(when+dur+0.05);
+  return o;
 }
-function noise(dur,vol,fLow,when,mus){
+function vNz(dest,vol,when,dur,fType,fHz0,fHz1,q){
   if(!AC||muted) return;
-  when=when||AC.currentTime;
   const s=AC.createBufferSource(); s.buffer=noiseBuf; s.loop=true;
-  const f=AC.createBiquadFilter(); f.type='lowpass';
-  f.frequency.setValueAtTime(fLow*4,when);
-  f.frequency.exponentialRampToValueAtTime(fLow,when+dur);
+  s.playbackRate.value=0.7+Math.random()*0.6;
+  const f=AC.createBiquadFilter(); f.type=fType||'lowpass'; f.Q.value=q||0.8;
+  f.frequency.setValueAtTime(fHz0||2000,when);
+  if(fHz1) f.frequency.exponentialRampToValueAtTime(Math.max(30,fHz1),when+dur);
   const g=AC.createGain();
   g.gain.setValueAtTime(vol,when);
   g.gain.exponentialRampToValueAtTime(0.0001,when+dur);
-  s.connect(f); f.connect(g); g.connect(mus?gMus:gSfx);
-  s.start(when); s.stop(when+dur+0.02);
+  s.connect(f); f.connect(g); g.connect(dest);
+  s.start(when); s.stop(when+dur+0.05);
 }
-const sfx={
-  shoot(){ tone(700,180,0.07,'square',0.045); },
-  eight(){ tone(500,140,0.09,'square',0.05); },
-  flame(){ noise(0.08,0.05,900); },
-  clink(){ tone(1300,900,0.05,'square',0.05); },
-  boom(){ noise(0.35,0.30,500); tone(160,40,0.3,'sine',0.25); },
-  bigBoom(){ noise(0.8,0.4,320); tone(120,30,0.7,'sine',0.35); },
-  bomb(){ noise(1.1,0.5,260); tone(90,24,1.0,'sine',0.4); },
-  pickup(){ tone(660,660,0.07,'square',0.08); tone(990,990,0.09,'square',0.08,AC?AC.currentTime+0.07:0); },
-  blip(){ tone(740,740,0.045,'square',0.06); },
-  hit(){ tone(220,90,0.05,'square',0.06); },
-  shield(){ tone(320,640,0.14,'square',0.09); noise(0.12,0.1,900); },
-  warn(){ tone(880,880,0.08,'square',0.07); },
-  fall(){ tone(520,60,0.7,'sine',0.18); },
-  thud(){ tone(120,45,0.18,'sine',0.24); noise(0.12,0.10,300); },
-  die(){ noise(0.6,0.35,400); tone(300,40,0.55,'sawtooth',0.2); },
-  extend(){ for(let i=0;i<4;i++) tone(520+i*130,520+i*130,0.1,'square',0.08,AC?AC.currentTime+i*0.09:0); }
-};
-// music engine — two songs + clear jingle (all original patterns)
+function duck(depth,rel){ // momentary music dip under big impacts
+  if(!AC||!gMus) return;
+  const v=0.5*VOLS[SET.mus], t=AC.currentTime;
+  gMus.gain.cancelScheduledValues(t);
+  gMus.gain.setValueAtTime(v*depth,t);
+  gMus.gain.linearRampToValueAtTime(v,t+rel);
+}
 const N2F=n=>440*Math.pow(2,(n-69)/12);
+// ---- drums
+function kick(t,vol){
+  vOsc(gMus,'sine',115,36,vol,t,0.16);
+  vNz(gMus,vol*0.4,t,0.02,'highpass',900);
+}
+function snare(t,vol){
+  vNz(gMus,vol,t,0.13,'bandpass',1900,900,1.1);
+  vOsc(gMus,'triangle',195,130,vol*0.7,t,0.07);
+}
+function hat(t,vol,open){
+  vNz(gMus,vol,t,open?0.16:0.045,'highpass',6200);
+}
+// ---- pitched channels
+function bassN(n,t,dur){
+  if(!AC||muted) return;
+  const f=N2F(n);
+  const flt=AC.createBiquadFilter();
+  flt.type='lowpass'; flt.Q.value=2;
+  flt.frequency.setValueAtTime(1100,t);
+  flt.frequency.exponentialRampToValueAtTime(320,t+dur);
+  flt.connect(gMus);
+  vOsc(flt,'sawtooth',f,f,0.14,t,dur);
+  vOsc(gMus,'square',f/2,f/2,0.10,t,dur);
+}
+function leadN(n,t,dur,vol,wave){
+  const o=vOsc(gMus,wave||'square',N2F(n),N2F(n),vol,t,dur,0.012);
+  if(o){ // gentle vibrato
+    const lfo=AC.createOscillator(), lg=AC.createGain();
+    lfo.frequency.value=5.6; lg.gain.value=7;
+    lfo.connect(lg); lg.connect(o.detune);
+    lfo.start(t+dur*0.3); lfo.stop(t+dur+0.05);
+  }
+}
+function arpN(n,t,dur,vol){ vOsc(gMus,'triangle',N2F(n),N2F(n),vol||0.024,t,dur); }
+function padChord(notes,t,dur){
+  for(const n of notes){
+    vOsc(gMus,'triangle',N2F(n),N2F(n),0.014,t,dur,0.5);
+    const o2=vOsc(gMus,'triangle',N2F(n),N2F(n),0.012,t,dur,0.5);
+    if(o2) o2.detune.value=8;
+  }
+}
+// ---- original tracks (32 sixteenth-note steps = 2 bars; 0 = rest)
 const SONGS={
-  stage:{bpm:138,
-    bass:[45,0,45,45, 48,0,45,0, 43,0,43,43, 50,0,48,0, 45,0,45,45, 48,0,45,0, 41,0,41,43, 45,0,50,48],
-    lead:[69,0,72,76, 0,72,0,69, 67,0,71,74, 0,79,76,71, 69,0,72,76, 0,77,76,72, 65,0,69,72, 77,0,76,72]},
-  boss:{bpm:170,
-    bass:[38,38,0,38, 41,0,38,0, 38,38,0,38, 44,0,43,41, 38,38,0,38, 41,0,38,0, 46,0,45,0, 44,43,41,39],
-    lead:[0,0,74,0, 74,0,73,0, 0,0,74,77, 0,76,0,73, 0,0,74,0, 78,0,77,74, 70,0,73,0, 76,0,74,70]}
+  title:{bpm:92,leadAlways:true,leadWave:'sine',leadVol:0.04,
+    k:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    h:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0, 0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+    hVol:0.03,
+    arp:[57,64,69,72,76,72,69,64,57,64,69,72,76,72,69,64,
+         55,62,67,71,74,71,67,62,53,60,65,69,72,69,65,60],
+    lead:[0,0,0,0,0,0,0,0,76,0,0,74,0,0,72,0, 0,0,0,0,0,0,0,0,71,0,0,69,0,0,0,0],
+    pad:[[57,60,64,67],[57,60,64,67],[55,59,62,66],[53,57,60,64]]},
+  stage1:{bpm:132,
+    k:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0, 1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+    s:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+    h:[1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0, 1,0,1,0,1,0,1,1,1,0,1,0,2,0,1,0],
+    bass:[45,0,45,45,0,45,0,43,43,0,43,43,0,43,0,41,
+          41,0,41,41,0,41,0,43,43,0,43,43,0,47,0,48],
+    lead:[69,0,0,72,76,0,72,0,74,0,71,67,0,0,67,0,
+          69,0,0,72,77,0,76,0,74,0,76,74,71,69,0,0],
+    arp:[81,76,72,76,81,76,72,76,79,74,71,74,79,74,71,74,
+         77,72,69,72,77,72,69,72,79,74,71,74,81,76,71,74],
+    pad:[[57,60,64],[55,59,62],[53,57,60],[55,59,62]]},
+  stage2:{bpm:116,
+    k:[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0, 1,0,0,0,0,0,1,0,0,0,1,0,0,1,0,0],
+    s:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0],
+    h:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0, 1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0],
+    bass:[40,0,0,40,40,0,38,0,40,0,0,40,43,0,42,0,
+          40,0,0,40,40,0,38,0,36,0,0,36,38,0,42,0],
+    lead:[0,0,64,0,0,63,0,0,64,0,66,0,0,0,0,0,
+          0,0,64,0,0,67,0,66,64,0,63,0,64,0,0,0],
+    pad:[[52,55,59],[52,55,59],[48,52,55],[50,54,57]]},
+  night:{bpm:122,leadVol:0.04,
+    k:[1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0, 1,0,0,0,0,0,0,1,0,0,1,0,0,0,1,0],
+    s:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    sVol:0.14,
+    h:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0, 0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0],
+    bass:[38,0,38,0,0,38,0,37,38,0,38,0,0,41,0,44,
+          38,0,38,0,0,38,0,37,36,0,36,0,0,43,0,41],
+    lead:[0,0,0,0,74,0,0,73,0,0,0,0,70,0,0,0,
+          0,0,0,0,74,0,77,0,0,76,0,73,0,0,70,0],
+    pad:[[50,53,57],[50,53,57],[48,51,55],[49,53,56]]},
+  docks:{bpm:128,
+    k:[1,0,0,1,0,0,1,0,0,0,1,0,0,0,1,0, 1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],
+    s:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    h:[1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0, 1,0,1,1,1,0,1,0,1,0,1,1,2,0,1,0],
+    bass:[36,0,36,0,39,0,36,0,41,0,41,0,39,0,43,0,
+          36,0,36,0,39,0,36,0,34,0,34,0,39,0,41,0],
+    lead:[72,0,74,0,75,74,72,0,0,0,72,74,77,0,74,0,
+          72,0,74,0,79,0,77,75,74,0,72,0,70,72,0,0],
+    pad:[[60,63,67],[60,63,67],[58,62,65],[58,62,65]]},
+  boss:{bpm:164,leadVol:0.05,
+    k:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0, 1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0],
+    s:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,1],
+    h:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    hVol:0.045,
+    bass:[40,40,0,40,40,0,40,40,0,40,40,0,43,0,42,0,
+          40,40,0,40,40,0,40,40,45,0,44,0,43,0,42,0],
+    lead:[0,0,76,0,75,0,0,0,0,0,76,79,0,78,0,75,
+          0,0,76,0,82,0,79,0,78,0,75,0,76,0,74,0],
+    pad:[[52,59],[52,59],[50,57],[48,55]]},
+  final:{bpm:150,leadVol:0.05,
+    k:[1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0, 1,0,0,0,0,0,0,0,1,1,0,0,1,0,0,0],
+    s:[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0],
+    h:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,2,0, 1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1],
+    bass:[36,0,0,36,0,0,36,0,36,0,0,35,0,0,34,0,
+          36,0,0,36,0,0,36,0,39,0,38,0,37,0,34,0],
+    lead:[0,0,0,0,72,0,0,0,0,0,71,0,0,0,68,0,
+          0,0,0,0,75,0,0,74,0,0,72,0,68,0,67,0],
+    pad:[[48,55,63],[48,55,63],[46,53,62],[44,51,60]]}
 };
-let curSong='stage', musTimer=null, musStep=0, musNext=0;
-function setSong(s){ if(curSong!==s){ curSong=s; musStep=0; } }
+let curSong='title', pendingSong=null, musTimer=null, musStep=0, musNext=0;
+function setSong(s){
+  if(s&&SONGS[s]&&s!==curSong&&s!==pendingSong) pendingSong=s;
+}
+function playStep(S,i,t,spb){
+  if(S.k&&S.k[i]) kick(t,0.46);
+  if(S.s&&S.s[i]) snare(t,S.sVol||0.22);
+  if(S.h&&S.h[i]) hat(t,S.h[i]===2?0.10:(S.hVol||0.06),S.h[i]===2);
+  if(S.bass&&S.bass[i]) bassN(S.bass[i],t,spb*1.9);
+  const leadOK=S.leadAlways||state==='play'||state==='clear';
+  if(S.lead&&S.lead[i]&&leadOK){
+    leadN(S.lead[i],t,spb*2.6,S.leadVol||0.046,S.leadWave);
+    leadN(S.lead[i],t+spb*3,spb*2.0,(S.leadVol||0.046)*0.3,S.leadWave); // echo tap
+  }
+  if(S.arp&&S.arp[i]&&leadOK) arpN(S.arp[i],t,spb*0.95);
+  if(S.pad&&i%8===0) padChord(S.pad[(i>>3)%S.pad.length],t,spb*8.6);
+}
 function musicStart(){
   if(!AC||musTimer) return;
   musNext=AC.currentTime+0.1;
   musTimer=setInterval(()=>{
     if(!AC||muted) return;
-    const S=SONGS[curSong], spb=60/S.bpm/2;
-    while(musNext<AC.currentTime+0.18){
-      const i=musStep&31;
-      if(S.bass[i]) tone(N2F(S.bass[i]-12),N2F(S.bass[i]-12),spb*0.9,'triangle',0.11,musNext,true);
-      if(S.lead[i]&&(state==='play'||state==='clear'))
-        tone(N2F(S.lead[i]),N2F(S.lead[i]),spb*0.55,'square',0.03,musNext,true);
-      if(i%8===0||i%16===10) tone(115,35,0.12,'sine',0.22,musNext,true);
-      if(i%8===4) noise(0.07,0.09,1800,musNext,true);
-      if(i%2===1) noise(0.025,0.018,5000,musNext,true);
+    while(musNext<AC.currentTime+0.25){
+      if(pendingSong&&musStep%16===0){ // switch on the bar line
+        curSong=pendingSong; pendingSong=null; musStep=0;
+      }
+      const S=SONGS[curSong], spb=60/S.bpm/4;
+      playStep(S,musStep&31,musNext,spb);
       musNext+=spb; musStep++;
     }
   },60);
 }
-function jingle(){
+function songForNow(){
+  if(state==='title'||state==='over'||state==='entry') return 'title';
+  if(boss&&boss.ready) return boss.kind===7?'final':'boss';
+  return [0,'stage1','stage2','night','docks','stage2','night','final'][area];
+}
+// ---- sound effects (layered, slight pitch variance where it repeats a lot)
+const sfx={
+  shoot(){
+    const t=AC?AC.currentTime:0, v=0.95+Math.random()*0.1;
+    vOsc(gSfx,'square',640*v,175,0.04,t,0.07);
+    vNz(gSfx,0.03,t,0.03,'highpass',2500);
+  },
+  eight(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'square',470,135,0.05,t,0.09);
+    vNz(gSfx,0.03,t,0.03,'highpass',2000);
+  },
+  flame(){ vNz(gSfx,0.05,AC?AC.currentTime:0,0.1,'lowpass',900,500); },
+  clink(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'square',1350,980,0.045,t,0.05);
+    vNz(gSfx,0.02,t,0.02,'highpass',5000);
+  },
+  boom(){
+    const t=AC?AC.currentTime:0;
+    vNz(gSfx,0.30,t,0.32,'lowpass',2300,260);
+    vOsc(gSfx,'sine',150,38,0.26,t,0.3);
+    vOsc(gSfx,'square',380,75,0.08,t,0.12);
+  },
+  bigBoom(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'sine',62,26,0.36,t,0.85);
+    vNz(gSfx,0.42,t,0.8,'lowpass',3000,180);
+    vOsc(gSfx,'square',290,48,0.1,t,0.3);
+    duck(0.45,0.5);
+  },
+  bomb(){
+    const t=AC?AC.currentTime:0;
+    vNz(gSfx,0.2,t,0.03,'highpass',1500);
+    vOsc(gSfx,'sine',72,22,0.5,t+0.02,1.1);
+    vNz(gSfx,0.5,t+0.02,1.2,'lowpass',2600,120);
+    duck(0.3,0.8);
+  },
+  pickup(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'square',660,660,0.07,t,0.07);
+    vOsc(gSfx,'square',990,990,0.07,t+0.07,0.09);
+    vOsc(gSfx,'triangle',1320,1320,0.05,t+0.14,0.07);
+  },
+  blip(){ vOsc(gSfx,'square',740,740,0.055,AC?AC.currentTime:0,0.045); },
+  hit(){ vOsc(gSfx,'square',225,90,0.055,AC?AC.currentTime:0,0.05); },
+  shield(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'square',320,640,0.09,t,0.14);
+    vNz(gSfx,0.09,t,0.12,'bandpass',900,700,1.5);
+  },
+  warn(){ vOsc(gSfx,'square',880,880,0.07,AC?AC.currentTime:0,0.08); },
+  fall(){ vOsc(gSfx,'sine',520,58,0.18,AC?AC.currentTime:0,0.7); },
+  thud(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'sine',120,44,0.24,t,0.18);
+    vNz(gSfx,0.1,t,0.12,'lowpass',320);
+  },
+  die(){
+    const t=AC?AC.currentTime:0;
+    vOsc(gSfx,'sawtooth',300,42,0.2,t,0.55);
+    vNz(gSfx,0.3,t,0.6,'lowpass',1800,150);
+    duck(0.4,0.7);
+  },
+  start(){
+    const t=AC?AC.currentTime:0;
+    [57,64,69,76].forEach((n,i)=>vOsc(gSfx,'square',N2F(n),N2F(n),0.07,t+i*0.06,0.12));
+    vNz(gSfx,0.05,t,0.3,'highpass',1200,4500);
+  },
+  gameover(){
+    const t=AC?AC.currentTime:0;
+    [64,60,57,50].forEach((n,i)=>vOsc(gSfx,'square',N2F(n),N2F(n),0.08,t+i*0.22,0.3));
+    vOsc(gSfx,'sine',110,40,0.2,t+0.66,0.9);
+  },
+  extend(){
+    const t=AC?AC.currentTime:0;
+    [69,73,76,81].forEach((n,i)=>vOsc(gSfx,'square',N2F(n),N2F(n),0.08,t+i*0.09,0.12));
+    vOsc(gSfx,'triangle',N2F(88),N2F(88),0.05,t+0.36,0.25);
+  }
+};
+function jingle(){ // area clear fanfare
   if(!AC||muted) return;
   const t=AC.currentTime;
-  [[72,0],[76,0.12],[79,0.24],[84,0.36],[83,0.6],[88,0.75]]
-    .forEach(nd=>tone(N2F(nd[0]),N2F(nd[0]),0.3,'square',0.08,t+nd[1],true));
+  kick(t,0.5); kick(t+0.3,0.5);
+  [[72,0],[76,0.12],[79,0.24],[84,0.36],[83,0.62],[88,0.78]]
+    .forEach(nd=>vOsc(gMus,'square',N2F(nd[0]),N2F(nd[0]),0.08,t+nd[1],0.3));
+  padChord([60,64,67,72],t+0.36,1.4);
 }
 
 //------------------------------------------------- input
@@ -1217,6 +1411,7 @@ function startGame(){
   deathsThisArea=0; bestChain=0; podsKilled=0; tally=null; midDone=false;
   ST={shots:0,hits:0,kills:0,bombs:0,areas:0,chain:0};
   gameT=0; buildPlats();
+  sfx.start();
   msg('AREA 1  —  GO!',2.2);
 }
 function nextLoop(){
@@ -1459,6 +1654,7 @@ function updatePlayerFor(pl,inp,dt){
 }
 function checkAllOut(){
   if((state==='play'||state==='clear')&&players().every(p=>p.out)){
+    sfx.gameover();
     if(scoreQualifies(score)){ entry={ch:[0,0,0],slot:0}; state='entry'; }
     else state='over';
   }
@@ -2272,7 +2468,7 @@ function updateWorld(dt){
 
 function update(dt){
   readInput();
-  setSong(boss&&boss.ready&&(state==='play'||state==='clear')?'boss':'stage');
+  setSong(songForNow());
   if(state==='title'){
     dst+=8*dt; // ambient scroll behind menu
   }else if(state==='clear'){
