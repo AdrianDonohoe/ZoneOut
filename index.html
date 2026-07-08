@@ -1658,12 +1658,14 @@ function updatePlayerFor(pl,inp,dt){
   if(inp.fire&&pl.superT>0) pl.superT=Math.max(0,pl.superT-dt);
   if(inp.bomb){ useBomb(pl); }
   pl.invuln=Math.max(0,pl.invuln-dt);
-  pl.energy-=DRAIN*drainK()*dt;
-  if(pl.energy<25){
-    warnTimer-=dt;
-    if(warnTimer<=0){ sfx.warn(); warnTimer=0.9; }
+  if(state!=='clear'){ // the meter pauses while the victory tally runs
+    pl.energy-=DRAIN*drainK()*dt;
+    if(pl.energy<25){
+      warnTimer-=dt;
+      if(warnTimer<=0){ sfx.warn(); warnTimer=0.9; }
+    }
+    if(pl.energy<=0){ pl.energy=0; playerDie(pl); }
   }
-  if(pl.energy<=0){ pl.energy=0; playerDie(pl); }
 }
 function checkAllOut(){
   if((state==='play'||state==='clear')&&players().every(p=>p.out)){
@@ -2225,6 +2227,9 @@ function updateBoss(dt){
     }
     boss=null;
     floodOn=false; tempWalls=[]; lobs=[]; ventT=0;
+    ebul.length=0; // the killing blow sweeps the screen
+    bombSuppress=Math.max(bombSuppress,3); // survivors hold fire during the tally
+    for(const pl of players()) pl.invuln=Math.max(pl.invuln,6); // safe through the tally
     addScore(10000); popup(b.x,b.y,'+10000');
     jingle(); buzz([120,60,120]);
     for(let i=0;i<7;i++)

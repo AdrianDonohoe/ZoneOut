@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='zoneout-v7';
+const CACHE='zoneout-v8';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 
 self.addEventListener('install',e=>{
