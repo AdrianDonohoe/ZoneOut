@@ -199,6 +199,9 @@ function mkTileset(pal){
     gt.addColorStop(0,pal.wall0); gt.addColorStop(1,pal.wall1);
     g.fillStyle=gt; g.fillRect(1,1,TS-2,TS-12);
     g.strokeStyle='rgba(255,255,255,0.12)'; g.strokeRect(1.5,1.5,TS-3,TS-13);
+    g.fillStyle='rgba(255,255,255,0.17)'; g.fillRect(1,1,TS-2,3.5); g.fillRect(1,1,3.5,TS-12);
+    g.fillStyle='rgba(0,0,0,0.24)'; g.fillRect(TS-4.5,4,3.5,TS-16);
+    g.strokeStyle='rgba(0,0,0,0.6)'; g.lineWidth=1.5; g.strokeRect(0.75,0.75,TS-1.5,TS-1.5);
     g.fillStyle='rgba(255,255,255,0.18)';
     g.fillRect(5,5,2,2); g.fillRect(TS-7,5,2,2);
     g.fillRect(5,TS-17,2,2); g.fillRect(TS-7,TS-17,2,2);
@@ -308,8 +311,19 @@ function tileAt(wr,c){
   const ORDER=['open','chasm','belt','barrier','flood','open','chasm','belt'];
   const rot=(Math.floor(hash(area*977)*8)+loop)%8;
   const bt=ORDER[(bi-2+rot)%8];
-  if(bt==='open'){ // open ground with scattered crates
-    return hash(wr*211+c*17+area*5)>0.975?'wall':'ground';
+  if(bt==='open'){ // open ground: large structures force route choices
+    if(hash(bi*271+area*31)>0.42){
+      const shape=Math.floor(hash(bi*577+area)*3);
+      if(shape===0){ // central monolith — pick a side
+        if(br>=2&&br<=4&&c>=3&&c<=6) return 'wall';
+      }else if(shape===1){ // twin flanks — thread the middle
+        if(br>=2&&br<=4&&(c<=2||c>=7)) return 'wall';
+      }else{ // staggered blocks — slalom through
+        if(br>=1&&br<=2&&c>=1&&c<=3) return 'wall';
+        if(br>=4&&br<=5&&c>=6&&c<=8) return 'wall';
+      }
+    }
+    return hash(wr*211+c*17+area*5)>0.978?'wall':'ground';
   }
   if(bt==='chasm'){ // crossed by bridges
     if(br>=2&&br<=5){
@@ -1060,7 +1074,7 @@ function buildLevel1(){
   add(1450,()=>spawnE('turret',60)); add(1455,()=>spawnE('turret',160)); add(1460,()=>spawnE('turret',260));
   add(1550,()=>spawnP('P',60));
   add(1600,()=>spawnE('tank',100)); add(1630,()=>spawnE('tank',220));
-  add(1700,()=>spawnP('E',240));
+  add(1700,()=>spawnP('E',240)); add(1720,()=>spawnP('A',80));
   drones(1850,40,45,6);
   add(1900,()=>spawnP('F',160));
   grunts(2000,[70,130,190,250,100,220]); add(2010,()=>spawnE('turret',160));
@@ -1092,7 +1106,7 @@ function buildLevel2(){
   mines(1300,[70,140,210,280,105]);
   add(1400,()=>spawnP('B',60));
   add(1480,()=>spawnE('shield',80)); add(1495,()=>spawnE('shield',240)); drones(1500,280,-55,4);
-  add(1620,()=>spawnP('E',160)); add(1640,()=>spawnP('P',60));
+  add(1620,()=>spawnP('E',160)); add(1640,()=>spawnP('P',60)); add(1660,()=>spawnP('A',260));
   grunts(1720,[40,100,160,220,280]);
   add(1850,()=>spawnE('turret',110)); add(1855,()=>spawnE('turret',210)); mines(1870,[60,260]);
   add(1980,()=>spawnP('W',160));
@@ -1126,7 +1140,7 @@ function buildLevel3(){ // Blackout Sector: spotters sweep, everything hides in 
   add(1380,()=>spawnP('B',160)); add(1400,()=>spawnP('P',280));
   mines(1480,[60,130,200,270]);
   add(1580,()=>spawnE('spotter',250)); drones(1600,280,-50,5);
-  add(1720,()=>spawnP('E',100));
+  add(1720,()=>spawnP('E',100)); add(1740,()=>spawnP('A',220));
   add(1800,()=>spawnE('tank',90)); add(1820,()=>spawnE('tank',230)); add(1840,()=>spawnE('spotter',160));
   grunts(1960,[50,120,190,260,90,230]);
   add(2080,()=>spawnP('W',160));
@@ -1161,7 +1175,7 @@ function buildLevel4(){ // Flooded Docks: waders and divers
   add(1560,()=>spawnP('E',60)); add(1580,()=>spawnP('P',260));
   grunts(1680,[40,110,180,250,285]);
   add(1800,()=>spawnE('turret',110)); add(1805,()=>spawnE('turret',210)); add(1820,()=>spawnE('tank',160));
-  add(1940,()=>spawnP('W',160));
+  add(1940,()=>spawnP('W',160)); add(1960,()=>spawnP('A',60));
   drones(2040,50,45,6); mines(2080,[70,240]);
   add(2200,()=>spawnP('E',240)); add(2220,()=>spawnP('F',80));
   add(2320,()=>spawnE('shield',120)); add(2340,()=>spawnE('shield',200)); add(2360,()=>spawnE('tank',160));
@@ -1190,7 +1204,7 @@ function buildLevel5(){ // Wasteland: minefields and armor columns
   grunts(1600,[40,110,180,250,285,75]);
   add(1740,()=>spawnP('E',120));
   add(1820,()=>spawnE('shield',110)); add(1840,()=>spawnE('shield',210)); add(1860,()=>spawnE('tank',160));
-  add(1980,()=>spawnP('W',160));
+  add(1980,()=>spawnP('W',160)); add(2000,()=>spawnP('A',260));
   mines(2080,[70,140,210,280]); drones(2120,280,-55,4);
   add(2240,()=>spawnP('E',60)); add(2260,()=>spawnP('F',260));
   add(2360,()=>spawnE('tank',100)); add(2380,()=>spawnE('tank',220)); add(2400,()=>spawnE('turret',160));
@@ -1220,7 +1234,7 @@ function buildLevel6(){ // The Stockade: guards, searchlights, kill-boxes
   grunts(1560,[40,110,180,250,285]);
   add(1700,()=>spawnP('E',120));
   add(1780,()=>spawnE('spotter',80)); add(1800,()=>spawnE('spotter',240)); drones(1820,280,-50,4);
-  add(1960,()=>spawnP('W',160));
+  add(1960,()=>spawnP('W',160)); add(1980,()=>spawnP('A',80));
   add(2040,()=>spawnE('tank',90)); add(2060,()=>spawnE('tank',230)); add(2080,()=>spawnE('shield',160));
   add(2200,()=>spawnP('E',220)); add(2220,()=>spawnP('F',100));
   grunts(2320,[40,110,180,250,75,145]);
@@ -1240,7 +1254,7 @@ function buildLevel7(){ // Final Assault: short, dense, generous supplies
   add(560,()=>spawnP('F',160)); add(580,()=>spawnP('P',60));
   add(660,()=>spawnE('tank',90)); add(680,()=>spawnE('tank',230));
   add(780,()=>spawnE('turret',60)); add(785,()=>spawnE('turret',260)); grunts(800,[110,210]);
-  add(920,()=>spawnP('E',160)); add(940,()=>spawnP('B',240));
+  add(920,()=>spawnP('E',160)); add(940,()=>spawnP('B',240)); add(960,()=>spawnP('A',80));
   drones(1020,280,-50,5); add(1060,()=>spawnE('spotter',160));
   grunts(1160,[40,110,180,250,285,75]);
   add(1300,()=>spawnP('E',100)); add(1320,()=>spawnP('F',220));
@@ -1324,14 +1338,14 @@ function terrainEvents(){
 function makeBoss(kind){
   const b={kind,x:W/2,y:-130,t:0,ready:false,at1:2,at2:1,at3:0,flash:0,spir:0,
     mode:'hold',moveT:4};
-  if(kind===1){ b.hp=b.maxHp=260; b.pods=[{dx:-46,dy:18,hp:60,max:60},{dx:46,dy:18,hp:60,max:60}]; }
+  if(kind===1){ b.hp=b.maxHp=320; b.pods=[{dx:-46,dy:18,hp:60,max:60},{dx:46,dy:18,hp:60,max:60}]; }
   else if(kind===2){ b.hp=b.maxHp=300; b.pods=[{dx:-54,dy:12,hp:70,max:70},{dx:54,dy:12,hp:70,max:70}]; }
-  else if(kind===3){ b.hp=b.maxHp=340; b.pods=[{dx:-48,dy:6,hp:70,max:70},{dx:48,dy:6,hp:70,max:70}]; }
-  else if(kind===4){ b.hp=b.maxHp=380; b.pods=[{dx:-50,dy:8,hp:70,max:70},{dx:50,dy:8,hp:70,max:70}]; b.vd=1; }
+  else if(kind===3){ b.hp=b.maxHp=390; b.pods=[{dx:-48,dy:6,hp:70,max:70},{dx:48,dy:6,hp:70,max:70}]; }
+  else if(kind===4){ b.hp=b.maxHp=430; b.pods=[{dx:-50,dy:8,hp:70,max:70},{dx:50,dy:8,hp:70,max:70}]; b.vd=1; }
   else if(kind===5){ b.hp=b.maxHp=320; b.pods=[]; b.segs=[]; b.trail=[]; b.hidden=true; b.wstate='burrow'; b.wT=2.4; b.heading=0; }
   else if(kind===6){ b.hp=b.maxHp=400; b.pods=[{dx:-66,dy:10,hp:50,max:50},{dx:-22,dy:10,hp:50,max:50},{dx:22,dy:10,hp:50,max:50},{dx:66,dy:10,hp:50,max:50}]; }
   else if(kind===7){ b.hp=b.maxHp=450; b.pods=[{dx:-55,dy:4,hp:80,max:80},{dx:55,dy:4,hp:80,max:80}]; b.open=0; b.launchT=3; b.doorQ=0; b.shielded=true; }
-  else if(kind===101){ b.hp=b.maxHp=140+40*(loop-1); b.pods=[]; }  // SENTRY GATE
+  else if(kind===101){ b.hp=b.maxHp=200+50*(loop-1); b.pods=[]; }  // SENTRY GATE
   else if(kind===102){ b.hp=b.maxHp=170+40*(loop-1); b.pods=[]; }  // DRILL BARGE
   else if(kind===103){ b.hp=b.maxHp=220; b.pods=[]; // GEMINI INTERCEPTORS
     b.twins=[{x:W/2-70,y:70,hp:110,dead:false},{x:W/2+70,y:98,hp:110,dead:false}]; }
@@ -1539,31 +1553,30 @@ function fireWeapon(pl){
   if(pl.superT>0){ // SUPER BURNER — piercing flame stream
     const base=Math.atan2(fy0,fx0);
     for(let i=0;i<2;i++){
-      const a=base+(Math.random()-0.5)*0.34;
+      const a=base+(Math.random()-0.5)*0.26;
       const sp=210+Math.random()*80;
       pbul.push({x:pl.x+fx0*10,y:pl.y+fy0*10,dx:Math.cos(a)*sp,dy:Math.sin(a)*sp,
-        dmg:1.4,pierce:true,flame:true,life:0.5,hitIds:[]});
+        dmg:1.4,pierce:true,flame:true,life:0.5,hitIds:[],sz:1.25+(pl.power-1)*0.25});
     }
     pl.fireT=0.05;
     if(Math.random()<0.35) sfx.flame();
     ST.shots+=pbul.length-n0;
     return;
   }
-  const sz=1+(pl.power-1)*0.18; // projectiles grow with power
+  const sz=1+(pl.power-1)*0.28; // purely visual growth
   if(pl.weapon===0){ // twin shot: max 3 projectiles; power scales damage/size/rate
     const px=-fy0, py=fx0;
     const dmg=[0,2,2,2.5,3,3.5][pl.power];
     for(const o of [-3,3])
-      pbul.push({x:pl.x+px*o+fx0*8,y:pl.y+py*o+fy0*8,dx:fx0*330,dy:fy0*330,dmg,sz});
+      pbul.push({x:pl.x+px*o+fx0*8,y:pl.y+py*o+fy0*8,dx:fx0*330,dy:fy0*330,dmg,sz,pc:pl.power});
     if(pl.power>=2)
-      pbul.push({x:pl.x+fx0*12,y:pl.y+fy0*12,dx:fx0*345,dy:fy0*345,dmg,sz});
+      pbul.push({x:pl.x+fx0*12,y:pl.y+fy0*12,dx:fx0*345,dy:fy0*345,dmg,sz,pc:pl.power});
     pl.fireT=[0,0.12,0.12,0.11,0.10,0.09][pl.power]; sfx.shoot();
-  }else{ // 8-way, power scales rate+damage
+  }else{ // 3-way spread — wide left, straight, wide right
     const dmg=1.5+0.5*pl.power;
-    for(let i=0;i<8;i++){
-      const a=i*TAU/8;
-      pbul.push({x:pl.x,y:pl.y,dx:Math.cos(a)*300,dy:Math.sin(a)*300,dmg,sz});
-    }
+    const base=Math.atan2(fy0,fx0);
+    for(const o of [-0.7,0,0.7])
+      pbul.push({x:pl.x+fx0*8,y:pl.y+fy0*8,dx:Math.cos(base+o)*310,dy:Math.sin(base+o)*310,dmg,sz,pc:pl.power});
     pl.fireT=[0,0.22,0.19,0.16,0.14,0.12][pl.power]; sfx.eight();
   }
   ST.shots+=pbul.length-n0;
@@ -1819,6 +1832,7 @@ function updateBoss(dt){
   const b=boss;
   b.t+=dt;
   b.flash=Math.max(0,(b.flash||0)-dt);
+  for(const pod of b.pods) if(pod.flash) pod.flash=Math.max(0,pod.flash-dt);
   if(!b.ready){
     if(b.kind===5){ // the wyrm is already beneath you
       b.ready=true; b.hidden=true; b.x=W/2; b.y=60;
@@ -1866,16 +1880,16 @@ function updateBoss(dt){
           const a=aimAng(b.x+pod.dx,b.y+pod.dy);
           for(let i=-2;i<=2;i++) eShoot(b.x+pod.dx,b.y+pod.dy,a+i*0.16,118*k);
         }
-        b.at1=(frac>0.66?1.7:1.3)/k;
+        b.at1=(frac>0.66?1.35:1.05)/k;
       }
-      if(frac<=0.66){
+      if(frac<=0.75){
         b.at2-=dt;
         if(b.at2<=0){
           for(let i=0;i<12;i++) eShoot(b.x,b.y+10,i*TAU/12+b.t,92*k);
-          b.at2=2.2/k;
+          b.at2=1.8/k;
         }
       }
-      if(frac<=0.33){
+      if(frac<=0.42){
         b.at3-=dt;
         if(b.at3<=0){
           b.spir+=0.55;
@@ -1898,17 +1912,17 @@ function updateBoss(dt){
           eShoot(b.x+pod.dx,b.y+pod.dy,a,130*k);
           eShoot(b.x+pod.dx,b.y+pod.dy,a+0.1,105*k);
         }
-        b.at1=1.35/k;
+        b.at1=1.05/k;
       }
       if(frac<=0.7){
         b.at2-=dt;
         if(b.at2<=0){ // wide fan sweep
           for(let i=-6;i<=6;i++)
             eShoot(b.x,b.y+12,Math.PI/2+i*0.17,(88+Math.abs(i)*7)*k);
-          b.at2=2.8/k;
+          b.at2=2.2/k;
         }
       }
-      if(frac<=0.35){
+      if(frac<=0.45){
         b.at3-=dt;
         if(b.at3<=0){ // kill the lights + twin spiral
           if(lightPulse<=0){ lightPulse=2.2; sfx.warn(); msg('LIGHTS OUT!',1); }
@@ -1921,22 +1935,22 @@ function updateBoss(dt){
     }
   }else if(b.kind===4){ // THE DREDGER — depth charges, currents, rising water
     b.x=W/2+Math.sin(b.t*0.35)*54;
-    floodOn=frac<=0.4;
+    floodOn=frac<=0.5;
     if(floodOn&&!b.warned){ b.warned=1; msg('HULL BREACH — DECK FLOODING',2); sfx.warn(); }
     if(bombSuppress<=0&&anyAlive()){
       b.at1-=dt;
       if(b.at1<=0){
         const tp=nearestP(b.x,b.y);
-        const n=frac<0.7?3:2;
+        const n=frac<0.7?4:3;
         for(let i=0;i<n;i++)
           lobs.push({x:b.x,y:b.y+12,
             tx:clamp(tp.x+(Math.random()-0.5)*110,16,W-16),
             ty:clamp(tp.y+(Math.random()-0.5)*90,150,H-24),
-            t:0,dur:1.5});
-        b.at1=2.4/k;
+            t:0,dur:1.3});
+        b.at1=2.0/k;
       }
       b.at2-=dt;
-      if(b.at2<=0){ b.vd=-b.vd; ventPush=b.vd; ventT=1.5; b.at2=4.4/k; }
+      if(b.at2<=0){ b.vd=-b.vd; ventPush=b.vd; ventT=1.5; b.at2=3.4/k; }
       b.at3-=dt;
       if(b.at3<=0){
         for(const pod of alivePods){
@@ -1944,7 +1958,7 @@ function updateBoss(dt){
           eShoot(b.x+pod.dx,b.y+pod.dy,a,120*k);
           eShoot(b.x+pod.dx,b.y+pod.dy,a+0.1,100*k);
         }
-        b.at3=1.7/k;
+        b.at3=1.35/k;
       }
     }
   }else if(b.kind===5){ // SAND WYRM — erupts along telegraphed lines
@@ -2000,6 +2014,7 @@ function updateBoss(dt){
   }else if(b.kind===6){ // THE WARDEN — cages you in raised barriers
     b.x=W/2+Math.sin(b.t*0.5)*40;
     const exposed=alivePods.length===0;
+    if(!b.hint&&b.t>2&&!exposed){ b.hint=1; msg('DESTROY THE FOUR PYLONS',2.2); }
     if(exposed&&!b.exMsg){ b.exMsg=1; msg('CORE EXPOSED!',1.6); tempWalls=[]; }
     if(bombSuppress<=0&&anyAlive()){
       if(!exposed){
@@ -2039,6 +2054,7 @@ function updateBoss(dt){
   }else if(b.kind===7){ // THE CARRIER — shield drops only for launch windows
     b.x=W/2+Math.sin(b.t*0.3)*36;
     const gensAlive=alivePods.length>0;
+    if(!b.hint&&b.t>2&&gensAlive){ b.hint=1; msg('CATAPULTS POWER THE SHIELD',2.2); }
     b.launchT-=dt;
     if(b.open>0){
       b.open-=dt;
@@ -2123,13 +2139,13 @@ function updateBoss(dt){
         const ex=b.x+58*b.side;
         const a=aimAng(ex,b.y);
         for(const o of [-0.18,0,0.18]) eShoot(ex,b.y,a+o,115*k);
-        b.at1=1.4/k;
+        b.at1=1.1/k;
       }
-      if(frac<=0.5){
+      if(frac<=0.65){
         b.at2-=dt;
         if(b.at2<=0){
-          for(let i=0;i<8;i++) eShoot(b.x,b.y,i*TAU/8+b.t,90*k);
-          b.at2=2.6/k;
+          for(let i=0;i<10;i++) eShoot(b.x,b.y,i*TAU/10+b.t,95*k);
+          b.at2=2.1/k;
         }
       }
     }
@@ -2183,7 +2199,12 @@ function updateBoss(dt){
     }
   }
   bossDropT-=dt;
-  if(bossDropT<=0){ spawnP('E',40+Math.random()*(W-80)); bossDropT=20; }
+  if(bossDropT<=0){
+    b.dropN=(b.dropN||0)+1;
+    const armor=(b.kind===4||b.kind===6||b.kind===7)&&b.dropN%2===0;
+    spawnP(armor?'A':'E',40+Math.random()*(W-80));
+    bossDropT=20;
+  }
   if(b.hp<=0){
     if(b.kind>=100){ // mid-boss breached — scroll resumes, no tally
       boss=null;
@@ -2358,6 +2379,7 @@ function updateWorld(dt){
             if(s&&dist2(b.x,b.y,s.x,s.y)<13*13){ blocked=true; break; }
           }
           if(blocked){
+            if(!boss.armMsg){ boss.armMsg=1; popup(b.x,b.y-14,'ARMORED'); }
             if(!b.pierce){
               b.gone=true; sfx.clink();
               parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*80,dy:-20,t:0,dur:0.16,c:'#e8d8b0'});
@@ -2369,7 +2391,7 @@ function updateWorld(dt){
         let podHit=false;
         for(const pod of boss.pods){
           if(pod.hp>0&&dist2(b.x,b.y,boss.x+pod.dx,boss.y+pod.dy)<13*13){
-            pod.hp-=b.dmg; boss.flash=Math.max(boss.flash,0.05);
+            pod.hp-=b.dmg; pod.flash=0.15;
             if(!b.pierce) b.gone=true;
             sfx.hit(); podHit=true; ST.hits++;
             if(pod.hp<=0){
@@ -2397,6 +2419,7 @@ function updateWorld(dt){
           const guarded=(boss.kind===6&&boss.pods.some(pp=>pp.hp>0))
                       ||(boss.kind===7&&boss.shielded);
           if(guarded){ // hard shield: pinged off
+            if(!boss.shieldMsg){ boss.shieldMsg=1; popup(boss.x,boss.y+36,'SHIELDED'); }
             if(!b.pierce) b.gone=true;
             sfx.clink();
             parts.push({kind:'spark',x:b.x,y:b.y,dx:(Math.random()-0.5)*80,dy:-30,t:0,dur:0.18,c:'#9fe1ff'});
@@ -2411,7 +2434,7 @@ function updateWorld(dt){
       }
     }
     for(const e of enemies){
-      const br=e.r+3*(b.sz||1);
+      const br=e.r+3; // hitbox stays fixed — size is cosmetic
       if(e.dead||dist2(b.x,b.y,e.x,e.y)>=br*br) continue;
       if(b.pierce){
         if(b.hitIds.indexOf(e.id)>=0) continue;
@@ -2445,7 +2468,7 @@ function updateWorld(dt){
       if(!pl.alive||dist2(p.x,p.y,pl.x,pl.y)>=17*17) continue;
       p.got=true; sfx.pickup();
       if(p.kind==='E'){ pl.energy=Math.min(100,pl.energy+40); msg('ENERGY +40',1); }
-      if(p.kind==='W'){ pl.weapon^=1; msg(pl.weapon?'8-WAY SHOT':'TWIN SHOT',1.2); }
+      if(p.kind==='W'){ pl.weapon^=1; msg(pl.weapon?'3-WAY SHOT':'TWIN SHOT',1.2); }
       if(p.kind==='B'){ pl.bombs=Math.min(5,pl.bombs+1); msg('BOMB +1',1); }
       if(p.kind==='S'){ addScore(1000); popup(p.x,p.y,'+1000'); }
       if(p.kind==='P'){
@@ -2453,6 +2476,11 @@ function updateWorld(dt){
         else { addScore(500); popup(p.x,p.y,'+500'); msg('MAX POWER',1); }
       }
       if(p.kind==='F'){ pl.superT=8; msg('SUPER BURNER!',1.4); }
+      if(p.kind==='A'){ // armor plate — restores a shield pip
+        const cap=SET.diff==='normal'?3:1;
+        if(pl.shield<cap){ pl.shield++; msg('ARMOR +1',1.2); }
+        else { addScore(500); popup(p.x,p.y,'+500'); }
+      }
       break;
     }
   }
@@ -3334,6 +3362,22 @@ function drawBoss(){
         ctx.fillStyle=chg>0?'#ffe9a8':'#8fd4ff';
         ctx.beginPath(); ctx.arc(0,-14,3.4,0,TAU); ctx.fill();
         glow(0,-14,14,chg>0?'yellow':'cyan',0.4+chg*0.5);
+        if(pod.flash>0){
+          ctx.save(); ctx.globalCompositeOperation='lighter';
+          ctx.globalAlpha=Math.min(1,pod.flash*7);
+          ctx.fillStyle='#fff'; rrFill(-5,-14,10,24,3);
+          ctx.restore();
+        }
+        if(b.t<9){ // call the shots early on
+          const bb=Math.sin(perf*7)*3;
+          ctx.fillStyle='#ffd24a';
+          ctx.beginPath();
+          ctx.moveTo(0,-22+bb); ctx.lineTo(-6,-31+bb); ctx.lineTo(6,-31+bb);
+          ctx.closePath(); ctx.fill();
+          glow(0,-26+bb,16,'yellow',0.6);
+        }
+        ctx.fillStyle='rgba(6,10,16,0.7)'; rrFill(-8,12.5,16,3.5,1.5);
+        ctx.fillStyle='#8fd4ff'; rrFill(-8,12.5,16*Math.max(0,pod.hp/pod.max),3.5,1.5);
       }else{
         ctx.fillStyle='#141824'; rrFill(-5,-8,10,18,3);
         glow(0,0,12,'orange',0.2+0.3*Math.random());
@@ -3418,6 +3462,22 @@ function drawBoss(){
         ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fillRect(-7,-12,14,2);
         ctx.fillStyle='#9fe1ff'; ctx.fillRect(-1.4,-12,2.8,26);
         glow(0,-12,10,'cyan',0.35+0.2*Math.sin(perf*8));
+        if(pod.flash>0){
+          ctx.save(); ctx.globalCompositeOperation='lighter';
+          ctx.globalAlpha=Math.min(1,pod.flash*7);
+          ctx.fillStyle='#fff'; rrFill(-7,-12,14,26,3);
+          ctx.restore();
+        }
+        if(b.t<9){
+          const bb=Math.sin(perf*7)*3;
+          ctx.fillStyle='#ffd24a';
+          ctx.beginPath();
+          ctx.moveTo(0,-20+bb); ctx.lineTo(-6,-29+bb); ctx.lineTo(6,-29+bb);
+          ctx.closePath(); ctx.fill();
+          glow(0,-24+bb,16,'yellow',0.6);
+        }
+        ctx.fillStyle='rgba(6,10,16,0.7)'; rrFill(-8,16,16,3.5,1.5);
+        ctx.fillStyle='#8fd4ff'; rrFill(-8,16,16*Math.max(0,pod.hp/pod.max),3.5,1.5);
       }else{
         ctx.fillStyle='#10141c'; rrFill(-7,-9,14,20,3);
         glow(0,0,14,'orange',0.2+0.3*Math.random());
@@ -3613,7 +3673,7 @@ function drawHUD(){
   ctx.fillStyle='#fff'; ctx.font='800 10px '+FONT;
   ctx.fillText(String(score),38,5);
   const drawChip=(pl,cx,small)=>{
-    const wtxt=pl.superT>0?'BURNER':(pl.weapon?'8-WAY':'TWIN')+' L'+pl.power;
+    const wtxt=pl.superT>0?'BURNER':(pl.weapon?'3-WAY':'TWIN')+' L'+pl.power;
     ctx.font='800 '+(small?7:8)+'px '+FONT;
     const chipW=ctx.measureText(wtxt).width+12;
     ctx.fillStyle=pl.superT>0?'rgba(255,146,52,0.22)':pl.weapon?'rgba(255,140,26,0.18)':'rgba(140,212,255,0.15)';
@@ -3846,7 +3906,7 @@ function drawTitle(){
   ctx.font='600 7.5px '+FONT; ctx.fillStyle='#7a828c'; ctx.textAlign='center';
   const hints=[
     'WASD MOVE · Z/A FIRE · X/B BOMB · P PAUSE · TWIN: ARROWS AIM',
-    '[E] ENERGY · [W] SWAP · [P] POWER · [F] BURNER',
+    '[E] ENERGY · [W] SWAP · [P] POWER · [F] BURNER · [A] ARMOR',
     'CHASMS DROP · BELTS PUSH · WALLS BLOCK'
   ];
   hints.forEach((l,i)=>ctx.fillText(l,W/2,288+i*10));
@@ -3988,7 +4048,8 @@ function draw(){
   for(const p of pickups){
     const cols={E:['green','#52e07a','#1d7a3a'],W:['orange','#ffb050','#c05c0a'],
       B:['blue','#8cc0ff','#2a5aa8'],S:['yellow','#ffe27a','#c09a20'],
-      P:['magenta','#ff8adf','#a0308a'],F:['red','#ff9070','#b03020']}[p.kind];
+      P:['magenta','#ff8adf','#a0308a'],F:['red','#ff9070','#b03020'],
+      A:['cyan','#9fe1ff','#2a6a9a']}[p.kind];
     const bob=Math.sin(p.t*4)*2.2;
     const pu=0.6+0.4*Math.sin(p.t*6);
     glow(p.x,p.y+bob,52,cols[0],0.45*pu+0.3);
@@ -4031,20 +4092,32 @@ function draw(){
   }
 
   for(const b of pbul){
-    if(b.flame){
-      const q=b.life/0.5;
-      glow(b.x,b.y,26-16*q,'orange',0.5+0.4*q);
-      glow(b.x,b.y,10,'yellow',0.6*q);
+    if(b.flame){ // solid-cored fire, not mist
+      const q=b.life/0.5, fs=b.sz||1;
+      const r=(4.5+(1-q)*9)*fs;
+      const fg2=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,r);
+      fg2.addColorStop(0,'rgba(255,250,215,'+(0.9*q+0.1).toFixed(3)+')');
+      fg2.addColorStop(0.45,'rgba(255,168,58,'+(0.85*q).toFixed(3)+')');
+      fg2.addColorStop(1,'rgba(205,60,10,0)');
+      ctx.fillStyle=fg2;
+      ctx.beginPath(); ctx.arc(b.x,b.y,r,0,TAU); ctx.fill();
+      glow(b.x,b.y,(30-13*q)*fs,'orange',0.4+0.35*q);
       continue;
     }
     const ang=Math.atan2(b.dy,b.dx);
     const s=b.sz||1;
+    const TC=[null,
+      ['yellow','rgba(255,214,90,0.35)','rgba(255,236,160,0.9)'],
+      ['orange','rgba(255,160,70,0.35)','rgba(255,205,150,0.9)'],
+      ['green','rgba(110,255,150,0.35)','rgba(195,255,205,0.9)'],
+      ['cyan','rgba(120,210,255,0.35)','rgba(195,235,255,0.9)'],
+      ['magenta','rgba(255,120,220,0.35)','rgba(255,195,240,0.9)']][b.pc||1];
     ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(ang); ctx.scale(s,s);
-    ctx.fillStyle='rgba(255,214,90,0.35)'; rrFill(-17,-1.8,13,3.6,1.8);
-    ctx.fillStyle='rgba(255,236,160,0.9)'; rrFill(-7,-2.6,14,5.2,2.6);
+    ctx.fillStyle=TC[1]; rrFill(-17,-1.8,13,3.6,1.8);
+    ctx.fillStyle=TC[2]; rrFill(-7,-2.6,14,5.2,2.6);
     ctx.fillStyle='#fff'; rrFill(-5,-1.6,11,3.2,1.6);
     ctx.restore();
-    glow(b.x,b.y,24*s,'yellow',0.75);
+    glow(b.x,b.y,24*s,TC[0],0.75);
   }
   for(const b of ebul){
     if(SET.hivis){ // high-visibility: bigger white core with dark outline
