@@ -1339,14 +1339,14 @@ function makeBoss(kind){
   const b={kind,x:W/2,y:-130,t:0,ready:false,at1:2,at2:1,at3:0,flash:0,spir:0,
     mode:'hold',moveT:4};
   if(kind===1){ b.hp=b.maxHp=320; b.pods=[{dx:-46,dy:18,hp:60,max:60},{dx:46,dy:18,hp:60,max:60}]; }
-  else if(kind===2){ b.hp=b.maxHp=300; b.pods=[{dx:-54,dy:12,hp:70,max:70},{dx:54,dy:12,hp:70,max:70}]; }
-  else if(kind===3){ b.hp=b.maxHp=390; b.pods=[{dx:-48,dy:6,hp:70,max:70},{dx:48,dy:6,hp:70,max:70}]; }
-  else if(kind===4){ b.hp=b.maxHp=430; b.pods=[{dx:-50,dy:8,hp:70,max:70},{dx:50,dy:8,hp:70,max:70}]; b.vd=1; }
+  else if(kind===2){ b.hp=b.maxHp=380; b.pods=[{dx:-54,dy:12,hp:70,max:70},{dx:54,dy:12,hp:70,max:70}]; }
+  else if(kind===3){ b.hp=b.maxHp=440; b.pods=[{dx:-48,dy:6,hp:70,max:70},{dx:48,dy:6,hp:70,max:70}]; }
+  else if(kind===4){ b.hp=b.maxHp=480; b.pods=[{dx:-50,dy:8,hp:70,max:70},{dx:50,dy:8,hp:70,max:70}]; b.vd=1; }
   else if(kind===5){ b.hp=b.maxHp=320; b.pods=[]; b.segs=[]; b.trail=[]; b.hidden=true; b.wstate='burrow'; b.wT=2.4; b.heading=0; }
   else if(kind===6){ b.hp=b.maxHp=400; b.pods=[{dx:-66,dy:10,hp:50,max:50},{dx:-22,dy:10,hp:50,max:50},{dx:22,dy:10,hp:50,max:50},{dx:66,dy:10,hp:50,max:50}]; }
   else if(kind===7){ b.hp=b.maxHp=450; b.pods=[{dx:-55,dy:4,hp:80,max:80},{dx:55,dy:4,hp:80,max:80}]; b.open=0; b.launchT=3; b.doorQ=0; b.shielded=true; }
-  else if(kind===101){ b.hp=b.maxHp=200+50*(loop-1); b.pods=[]; }  // SENTRY GATE
-  else if(kind===102){ b.hp=b.maxHp=170+40*(loop-1); b.pods=[]; }  // DRILL BARGE
+  else if(kind===101){ b.hp=b.maxHp=240+60*(loop-1); b.pods=[]; }  // SENTRY GATE
+  else if(kind===102){ b.hp=b.maxHp=220+55*(loop-1); b.pods=[]; }  // DRILL BARGE
   else if(kind===103){ b.hp=b.maxHp=220; b.pods=[]; // GEMINI INTERCEPTORS
     b.twins=[{x:W/2-70,y:70,hp:110,dead:false},{x:W/2+70,y:98,hp:110,dead:false}]; }
   return b;
@@ -1575,7 +1575,7 @@ function fireWeapon(pl){
   }else{ // 3-way spread — 11, 12 and 1 o'clock
     const dmg=1.5+0.5*pl.power;
     const base=Math.atan2(fy0,fx0);
-    for(const o of [-0.52,0,0.52]) // ±30°
+    for(const o of [-0.42,0,0.42]) // ±24°
       pbul.push({x:pl.x+fx0*8,y:pl.y+fy0*8,dx:Math.cos(base+o)*310,dy:Math.sin(base+o)*310,dmg,sz,pc:pl.power});
     pl.fireT=[0,0.22,0.19,0.16,0.14,0.12][pl.power]; sfx.eight();
   }
@@ -1867,7 +1867,7 @@ function updateBoss(dt){
       diving=true;
       const q=clamp(1-b.moveT/1.6,0,1);
       b.y=95+Math.sin(Math.PI*q)*(b.kind===2?135:150);
-      if(b.kind===2){ const tp=nearestP(b.x,b.y); b.x=clamp(b.x+clamp(tp.x-b.x,-1,1)*95*dt,60,W-60); } // crawler homes in
+      if(b.kind===2){ const tp=nearestP(b.x,b.y); b.x=clamp(b.x+clamp(tp.x-b.x,-1,1)*115*dt,60,W-60); } // crawler homes in
       if(b.moveT<=0){ b.mode='hold'; b.moveT=4.5+Math.random()*2; b.y=95; }
     }
   }
@@ -1912,14 +1912,14 @@ function updateBoss(dt){
           eShoot(b.x+pod.dx,b.y+pod.dy,a,130*k);
           eShoot(b.x+pod.dx,b.y+pod.dy,a+0.1,105*k);
         }
-        b.at1=1.05/k;
+        b.at1=0.9/k;
       }
       if(frac<=0.7){
         b.at2-=dt;
         if(b.at2<=0){ // wide fan sweep
           for(let i=-6;i<=6;i++)
-            eShoot(b.x,b.y+12,Math.PI/2+i*0.17,(88+Math.abs(i)*7)*k);
-          b.at2=2.2/k;
+            eShoot(b.x,b.y+12,Math.PI/2+i*0.17,(96+Math.abs(i)*7)*k);
+          b.at2=1.75/k;
         }
       }
       if(frac<=0.45){
@@ -1929,28 +1929,28 @@ function updateBoss(dt){
           b.spir+=0.5;
           eShoot(b.x,b.y+12,b.spir,100*k);
           eShoot(b.x,b.y+12,b.spir+Math.PI,100*k);
-          b.at3=0.11;
+          b.at3=0.095;
         }
       }
     }
   }else if(b.kind===4){ // THE DREDGER — depth charges, currents, rising water
     b.x=W/2+Math.sin(b.t*0.35)*54;
-    floodOn=frac<=0.5;
+    floodOn=frac<=0.55;
     if(floodOn&&!b.warned){ b.warned=1; msg('HULL BREACH — DECK FLOODING',2); sfx.warn(); }
     if(bombSuppress<=0&&anyAlive()){
       b.at1-=dt;
       if(b.at1<=0){
         const tp=nearestP(b.x,b.y);
-        const n=frac<0.7?4:3;
+        const n=frac<0.7?5:3;
         for(let i=0;i<n;i++)
           lobs.push({x:b.x,y:b.y+12,
             tx:clamp(tp.x+(Math.random()-0.5)*110,16,W-16),
             ty:clamp(tp.y+(Math.random()-0.5)*90,150,H-24),
-            t:0,dur:1.3});
-        b.at1=2.0/k;
+            t:0,dur:1.15});
+        b.at1=1.7/k;
       }
       b.at2-=dt;
-      if(b.at2<=0){ b.vd=-b.vd; ventPush=b.vd; ventT=1.5; b.at2=3.4/k; }
+      if(b.at2<=0){ b.vd=-b.vd; ventPush=b.vd; ventT=1.9; b.at2=2.8/k; }
       b.at3-=dt;
       if(b.at3<=0){
         for(const pod of alivePods){
@@ -1958,7 +1958,7 @@ function updateBoss(dt){
           eShoot(b.x+pod.dx,b.y+pod.dy,a,120*k);
           eShoot(b.x+pod.dx,b.y+pod.dy,a+0.1,100*k);
         }
-        b.at3=1.35/k;
+        b.at3=1.1/k;
       }
     }
   }else if(b.kind===5){ // SAND WYRM — erupts along telegraphed lines
@@ -2136,16 +2136,19 @@ function updateBoss(dt){
       b.at1-=dt;
       if(b.at1<=0){
         b.side=b.side===1?-1:1;
-        const ex=b.x+58*b.side;
-        const a=aimAng(ex,b.y);
-        for(const o of [-0.18,0,0.18]) eShoot(ex,b.y,a+o,115*k);
-        b.at1=1.1/k;
+        const sides=frac<=0.6?[-1,1]:[b.side]; // wounded: both emitters at once
+        for(const sd of sides){
+          const ex=b.x+58*sd;
+          const a=aimAng(ex,b.y);
+          for(const o of [-0.18,0,0.18]) eShoot(ex,b.y,a+o,115*k);
+        }
+        b.at1=0.95/k;
       }
       if(frac<=0.65){
         b.at2-=dt;
         if(b.at2<=0){
           for(let i=0;i<10;i++) eShoot(b.x,b.y,i*TAU/10+b.t,95*k);
-          b.at2=2.1/k;
+          b.at2=1.8/k;
         }
       }
     }
@@ -2159,13 +2162,13 @@ function updateBoss(dt){
           eShoot(b.x+ox,b.y,a,125*k);
           eShoot(b.x+ox,b.y,a,100*k);
         }
-        b.at1=1.3/k;
+        b.at1=1.05/k;
       }
       if(frac<=0.5){
         b.at2-=dt;
         if(b.at2<=0){
           spawnE('mine',clamp(b.x+(Math.random()-0.5)*100,20,W-20),{y:b.y+34,phase:1,arm:1.6});
-          b.at2=3.0/k;
+          b.at2=2.4/k;
         }
       }
     }
@@ -2178,22 +2181,22 @@ function updateBoss(dt){
           const a=aimAng(b.x+pod.dx,b.y+pod.dy);
           for(const o of [-0.12,0,0.12]) eShoot(b.x+pod.dx,b.y+pod.dy,a+o,125*k);
         }
-        b.at1=(frac>0.35?1.6:1.1)/k;
+        b.at1=(frac>0.35?1.25:0.9)/k;
       }
       if(frac<=0.7){
         b.at2-=dt;
         if(b.at2<=0){ // bullet wall with a gap
           const gap=40+Math.random()*(W-80);
           for(let x=8;x<W;x+=16)
-            if(Math.abs(x-gap)>34) eShoot(x,b.y+42,Math.PI/2,85*k);
-          b.at2=3.2/k;
+            if(Math.abs(x-gap)>34) eShoot(x,b.y+42,Math.PI/2,92*k);
+          b.at2=2.5/k;
         }
       }
       if(frac<=0.35){
         b.at3-=dt;
         if(b.at3<=0){
           spawnE('mine',clamp(b.x+(Math.random()-0.5)*90,20,W-20),{y:b.y+46,phase:1,arm:1.5});
-          b.at3=2.5/k;
+          b.at3=2.0/k;
         }
       }
     }
