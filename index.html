@@ -90,7 +90,7 @@ function saveScores(){ localStorage.setItem('zoneout_scores',JSON.stringify(SCOR
 
 // ---- online leaderboard (optional). Deploy worker/leaderboard.js on Cloudflare
 // Workers (free), then paste its URL here, e.g. 'https://zoneout-lb.you.workers.dev'
-const LB_URL='';
+const LB_URL='https://fancy-cloud-dcd4.allezlesblues1.workers.dev';
 let lbData=null, lbRank=null, lbBusy=false;
 function lbFetch(){
   if(!LB_URL||lbBusy) return;
