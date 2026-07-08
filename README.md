@@ -11,6 +11,8 @@ step, no dependencies. All art, sound, music, and levels are generated in code.
 Works in any modern browser. On a phone, use *Add to Home Screen* to install
 it as a fullscreen app (PWA) — it also works offline after the first visit.
 
+<p align="center"><img src="screenshots/gameplay.gif" alt="Gameplay" width="264"></p>
+
 | Title | Combat | Blackout Sector | Sand Wyrm |
 |---|---|---|---|
 | ![Title screen](screenshots/title.jpg) | ![Area 1 combat](screenshots/combat.jpg) | ![Blackout Sector](screenshots/blackout.jpg) | ![Sand Wyrm boss](screenshots/wyrm.jpg) |
