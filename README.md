@@ -30,10 +30,17 @@ it as a fullscreen app (PWA) — it also works offline after the first visit.
   sliding platforms, conveyor belts, wading water, and walls that block
   movement and bullets for both sides.
 - **Out Zone-style energy system**: your meter always drains — grab [E] cells
-  to stay alive. [W] swaps twin shot / 8-way, [P] stacks weapon power,
-  [F] grants a piercing super burner, bombs clear the screen.
+  to stay alive. [W] swaps twin shot / 3-way spread, [P] stacks weapon power,
+  [A] restores armor, [F] grants a piercing super burner, bombs clear the
+  screen.
 - **Chain scoring** with an end-of-area bonus tally and a persistent top-5
   hi-score table with initials entry.
+- **Daily challenge**: seeded runs — everyone worldwide fights the same
+  battlefield each UTC day. Free runs roll a fresh layout every time.
+- **Share card**: one tap on the game-over screen renders your score as an
+  image for the system share sheet (or downloads it on desktop).
+- **Optional global leaderboard**: self-hosted on Cloudflare's free tier —
+  see below.
 - **2-player local co-op** (keyboard + gamepad, or two gamepads).
 - **Difficulty & accessibility options**: Normal (3-hit shield) or Arcade
   (one-hit deaths), classic or twin-stick aiming, screen-shake / rumble /
@@ -51,6 +58,15 @@ it as a fullscreen app (PWA) — it also works offline after the first visit.
 
 In classic mode your facing locks while firing (strafe). In 2P, player 1 uses
 the keyboard and player 2 a gamepad.
+
+## Global leaderboard (optional, free)
+
+The game runs fine without it. To turn on the online daily + all-time
+boards, deploy [`worker/leaderboard.js`](worker/leaderboard.js) as a
+Cloudflare Worker (free tier, ~3 minutes, instructions at the top of the
+file), then paste the worker URL into the `LB_URL` constant near the top of
+`index.html`. Scores submit automatically under your hi-score initials, and
+the title screen gains a TODAY column next to your local best.
 
 ## Run locally
 

@@ -44,7 +44,23 @@ resize();
 const TAU=Math.PI*2;
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const dist2=(ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;};
-function hash(n){ n=Math.imul(n^61,0x27d4eb2d); n^=n>>>15; n=Math.imul(n,0x2c1b3c6d); n^=n>>>12; return (n>>>0)/4294967296; }
+let terrainSeed=0; // per-run: reseeds the whole battlefield layout
+function hash(n){ n=Math.imul(n^61^terrainSeed,0x27d4eb2d); n^=n>>>15; n=Math.imul(n,0x2c1b3c6d); n^=n>>>12; return (n>>>0)/4294967296; }
+// gameplay RNG — seeded, consumed ONLY in the fixed-timestep update path.
+// (visual effects keep Math.random so draw frequency can never desync a run)
+let rngState=1;
+function srand(s){ rngState=(s>>>0)||1; }
+function grand(){
+  rngState=(rngState+0x6D2B79F5)>>>0;
+  let t=rngState;
+  t=Math.imul(t^t>>>15,t|1);
+  t^=t+Math.imul(t^t>>>7,t|61);
+  return ((t^t>>>14)>>>0)/4294967296;
+}
+function dailyKey(){
+  const d=new Date();
+  return d.getUTCFullYear()*10000+(d.getUTCMonth()+1)*100+d.getUTCDate();
+}
 function rrPath(g,x,y,w,h,r){
   g.beginPath();
   g.moveTo(x+r,y);
@@ -71,6 +87,96 @@ if(!SCORES.length){
 function topScore(){ return SCORES.length?SCORES[0].s:0; }
 function scoreQualifies(s){ return s>0&&(SCORES.length<5||s>SCORES[SCORES.length-1].s); }
 function saveScores(){ localStorage.setItem('zoneout_scores',JSON.stringify(SCORES)); }
+
+// ---- online leaderboard (optional). Deploy worker/leaderboard.js on Cloudflare
+// Workers (free), then paste its URL here, e.g. 'https://zoneout-lb.you.workers.dev'
+const LB_URL='';
+let lbData=null, lbRank=null, lbBusy=false;
+function lbFetch(){
+  if(!LB_URL||lbBusy) return;
+  lbBusy=true;
+  fetch(LB_URL+'/top?day='+dailyKey(),{signal:AbortSignal.timeout(4000)})
+    .then(r=>r.json()).then(j=>{ lbData=j; })
+    .catch(()=>{}).finally(()=>{ lbBusy=false; });
+}
+function lbSubmit(name,sc){
+  if(!LB_URL||!(sc>0)) return;
+  fetch(LB_URL+'/submit',{method:'POST',
+    body:JSON.stringify({n:name,s:sc,m:SET.diff==='arcade'?'A':'N',day:dailyKey(),run:runMode}),
+    signal:AbortSignal.timeout(4000)})
+    .then(r=>r.json()).then(j=>{ lbRank=j; lbFetch(); }).catch(()=>{});
+}
+// ---- share card: score image via the system share sheet (or download)
+function buildShareCard(){
+  const c=document.createElement('canvas'); c.width=720; c.height=400;
+  const g=c.getContext('2d');
+  const bg=g.createLinearGradient(0,0,0,400);
+  bg.addColorStop(0,'#0b111c'); bg.addColorStop(1,'#05070b');
+  g.fillStyle=bg; g.fillRect(0,0,720,400);
+  g.strokeStyle='rgba(140,212,255,0.06)';
+  for(let x=0;x<720;x+=40){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,400); g.stroke(); }
+  for(let y=0;y<400;y+=40){ g.beginPath(); g.moveTo(0,y); g.lineTo(720,y); g.stroke(); }
+  g.strokeStyle='rgba(255,154,42,0.5)'; g.lineWidth=3; g.strokeRect(8,8,704,384);
+  g.textAlign='left'; g.textBaseline='top';
+  g.font='900 54px "Segoe UI",system-ui,sans-serif';
+  g.fillStyle='rgba(0,0,0,0.7)'; g.fillText('ZONE OUT',43,35);
+  const tg=g.createLinearGradient(0,32,0,90);
+  tg.addColorStop(0,'#ffe27a'); tg.addColorStop(1,'#e05a10');
+  g.fillStyle=tg; g.fillText('ZONE OUT',40,32);
+  g.font='700 16px "Segoe UI",system-ui,sans-serif';
+  g.fillStyle='#8fd4ff';
+  g.fillText(runMode==='daily'?('DAILY CHALLENGE  #'+dailyKey()):'FREE RUN',42,98);
+  g.font='900 64px "Segoe UI",system-ui,sans-serif';
+  g.fillStyle='#fff'; g.fillText(String(score),40,140);
+  g.font='700 20px "Segoe UI",system-ui,sans-serif';
+  g.fillStyle='#9aa3ad'; g.fillText('POINTS',44,214);
+  const acc=ST.shots?Math.min(99,Math.round(100*ST.hits/ST.shots)):0;
+  const rows=[
+    ['REACHED','AREA '+area+(loop>1?'  LOOP '+loop:'')],
+    ['KILLS',String(ST.kills)],
+    ['ACCURACY',acc+'%'],
+    ['BEST CHAIN','\u00d7'+ST.chain],
+    ['MODE',SET.diff==='arcade'?'ARCADE':'NORMAL']];
+  g.font='700 17px "Segoe UI",system-ui,sans-serif';
+  rows.forEach((rw,i)=>{
+    const y=258+i*26;
+    g.fillStyle='#8f98a3'; g.fillText(rw[0],44,y);
+    g.fillStyle='#e6ebf0'; g.fillText(rw[1],200,y);
+  });
+  // right panel: the pilot
+  g.save(); g.translate(560,190); g.scale(5,5);
+  g.fillStyle='#2e8b8b'; g.fillRect(-7,-9,14,14);
+  g.fillStyle='#ff8c1a'; g.fillRect(-10,-7,3,7); g.fillRect(7,-7,3,7);
+  g.fillStyle='#3aa0a0'; g.beginPath(); g.arc(0,-3,5.4,0,Math.PI*2); g.fill();
+  g.fillStyle='#07231f'; g.fillRect(-4,-6,8,2.6);
+  g.fillStyle='#aef7ff'; g.fillRect(-3,-5.6,3.6,1.4);
+  g.fillStyle='#c8c8d0'; g.fillRect(-1.5,-20,3,11);
+  g.restore();
+  g.font='700 15px "Segoe UI",system-ui,sans-serif';
+  g.textAlign='right'; g.fillStyle='#8fd4ff';
+  g.fillText('adriandonohoe.github.io/ZoneOut',676,362);
+  return c;
+}
+async function shareScore(){
+  try{
+    const c=buildShareCard();
+    const blob=await new Promise(res=>c.toBlob(res,'image/png'));
+    const file=new File([blob],'zoneout-score.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file],title:'ZONE OUT',
+          text:'I scored '+score+' in ZONE OUT'+(runMode==='daily'?' (daily #'+dailyKey()+')':'')+'!'});
+        return;
+      }catch(e){ if(e&&e.name==='AbortError') return; }
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='zoneout-score.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    msg('CARD SAVED',1.2);
+  }catch(e){}
+}
+const SHARE_BTN={x:W/2-56,y:382,w:112,h:24};
 
 //------------------------------------------------- prerendered art
 function mkC(w,h,fn){
@@ -693,7 +799,7 @@ function canvasPt(t){
 const BOMB_BTN={x:W-38,y:H-38,r:24};
 const PAUSE_BTN={x:W-16,y:32,r:12};
 const PMENU={x:W/2-70,w:140,h:28,y0:236,y1:274};
-const TM={y0:152,rh:14,rows:9};
+const TM={y0:146,rh:13.5,rows:10};
 function pauseHit(p){
   if(p.x<PMENU.x||p.x>PMENU.x+PMENU.w) return -1;
   if(p.y>=PMENU.y0&&p.y<=PMENU.y0+PMENU.h) return 0;
@@ -710,15 +816,16 @@ function titleRowAt(p){
 let titleSel=0;
 function titleAct(i,dir){
   dir=dir||1;
-  if(i===0){ startGame(); return; }
-  if(i===1) SET.players=SET.players===1?2:1;
-  if(i===2) SET.diff=SET.diff==='normal'?'arcade':'normal';
-  if(i===3) SET.aim=SET.aim==='classic'?'twin':'classic';
-  if(i===4) SET.mus=(SET.mus+dir+4)%4;
-  if(i===5) SET.sfx=(SET.sfx+dir+4)%4;
-  if(i===6) SET.shake^=1;
-  if(i===7) SET.rumble^=1;
-  if(i===8) SET.hivis^=1;
+  if(i===0){ startGame('free'); return; }
+  if(i===1){ startGame('daily'); return; }
+  if(i===2) SET.players=SET.players===1?2:1;
+  if(i===3) SET.diff=SET.diff==='normal'?'arcade':'normal';
+  if(i===4) SET.aim=SET.aim==='classic'?'twin':'classic';
+  if(i===5) SET.mus=(SET.mus+dir+4)%4;
+  if(i===6) SET.sfx=(SET.sfx+dir+4)%4;
+  if(i===7) SET.shake^=1;
+  if(i===8) SET.rumble^=1;
+  if(i===9) SET.hivis^=1;
   saveSet(); sfx.blip();
 }
 function titleKey(c){
@@ -742,6 +849,8 @@ function entryConfirm(){
 }
 function entryDone(){
   const n=entry.ch.map(i=>ECHARS[i]).join('');
+  localStorage.setItem('zoneout_name',n);
+  lbSubmit(n,score);
   SCORES.push({n,s:score,m:SET.diff==='arcade'?'A':'N'});
   SCORES.sort((a,b)=>b.s-a.s);
   SCORES=SCORES.slice(0,5);
@@ -792,6 +901,7 @@ addEventListener('keydown',e=>{
   if(state==='title'){ titleKey(e.code); return; }
   if(state==='entry'){ entryKey(e); return; }
   if(state==='over'){
+    if(e.code==='KeyS'){ shareScore(); return; }
     if(['Enter','Space','KeyZ'].includes(e.code)) state='title';
     return;
   }
@@ -810,7 +920,11 @@ cvs.addEventListener('touchstart',e=>{
       continue;
     }
     if(state==='entry'){ entryTouch(p); continue; }
-    if(state==='over'){ state='title'; continue; }
+    if(state==='over'){
+      if(p.x>=SHARE_BTN.x&&p.x<=SHARE_BTN.x+SHARE_BTN.w&&p.y>=SHARE_BTN.y&&p.y<=SHARE_BTN.y+SHARE_BTN.h) shareScore();
+      else state='title';
+      continue;
+    }
     if(state!=='play') continue;
     if(paused){
       const s=pauseHit(p);
@@ -863,7 +977,11 @@ cvs.addEventListener('mousedown',e=>{
     return;
   }
   if(state==='entry'){ entryTouch(p); return; }
-  if(state==='over'){ state='title'; return; }
+  if(state==='over'){
+    if(p.x>=SHARE_BTN.x&&p.x<=SHARE_BTN.x+SHARE_BTN.w&&p.y>=SHARE_BTN.y&&p.y<=SHARE_BTN.y+SHARE_BTN.h) shareScore();
+    else state='title';
+    return;
+  }
   if(state==='play'&&paused){
     const s=pauseHit(p);
     if(s===0) paused=false;
@@ -995,6 +1113,7 @@ let pauseSel=0;
 let chain=0, chainT=0;
 let deathsThisArea=0, bestChain=0, podsKilled=0, tally=null;
 let alarmT=0, lightPulse=0; // Blackout Sector: spotter alarm + boss light-out
+let runSeed=1, runMode='free'; // 'free' rolls a fresh seed; 'daily' = shared UTC-date seed
 let ST={shots:0,hits:0,kills:0,bombs:0,areas:0,chain:0}; // run stats
 
 function mkPlayer(pi){
@@ -1037,7 +1156,7 @@ function chainMult(){ return Math.min(4,1+Math.max(0,chain-1)*0.25); }
 //------------------------------------------------- level scripts
 const FLIES={drone:1,spotter:1}; // airborne: ignore terrain
 function spawnE(type,x,extra){
-  const e=Object.assign({type,x,y:-26,t:0,ft:1+Math.random(),hp:2,r:9,dead:false,id:++eidc},extra||{});
+  const e=Object.assign({type,x,y:-26,t:0,ft:1+grand(),hp:2,r:9,dead:false,id:++eidc},extra||{});
   if(type==='turret'){e.hp=6;e.r=11;}
   if(type==='tank'){e.hp=12;e.r=13;}
   if(type==='drone'){e.hp=2;e.r=8;e.x0=x;e.fired=false;}
@@ -1406,7 +1525,13 @@ function bossTouch(x,y){
   return dist2(x,y,boss.x,boss.y+8)<62*62;
 }
 
-function startGame(){
+function startGame(mode,seed){
+  lbRank=null;
+  runMode=mode==='daily'?'daily':'free';
+  runSeed=(seed!==undefined?seed
+    :runMode==='daily'?(dailyKey()^0x51ED)
+    :(Math.random()*0x7fffffff)|0)>>>0;
+  srand(runSeed); terrainSeed=runSeed;
   state='play'; paused=false;
   loop=1; area=1; score=0; nextExtend=30000; chain=0; chainT=0;
   P=mkPlayer(0);
@@ -1422,6 +1547,7 @@ function startGame(){
   dst=0; evIdx=0; levelLen=ALEN[1]; boss=null;
   events=buildLevel(1).concat(terrainEvents()).sort((a,b)=>a.d-b.d);
   shake=0; flash=0; bombSuppress=0; hitStop=0;
+  eidc=0; alarmT=0; lightPulse=0; warnTimer=0; // run-scoped state, reset for determinism
   deathsThisArea=0; bestChain=0; podsKilled=0; tally=null; midDone=false;
   ST={shots:0,hits:0,kills:0,bombs:0,areas:0,chain:0};
   gameT=0; buildPlats();
@@ -1446,7 +1572,7 @@ function nextLoop(){
   for(const pl of players()){ pl.invuln=2; pl.spawnT=0.4; }
 }
 function msg(t,d){ msgText=t; msgTimer=d; }
-function quitToTitle(){ paused=false; state='title'; }
+function quitToTitle(){ paused=false; state='title'; lbFetch(); }
 
 //------------------------------------------------- combat helpers
 function eShoot(x,y,ang,spd){
@@ -1495,7 +1621,7 @@ function killEnemy(e){
   boomFx(e.x,e.y,e.type==='tank');
   sfx.boom();
   hitStop=Math.min(0.06,hitStop+0.025);
-  if(e.type==='tank'&&Math.random()<0.5) pickups.push({kind:'E',x:e.x,y:e.y,t:0});
+  if(e.type==='tank'&&grand()<0.5) pickups.push({kind:'E',x:e.x,y:e.y,t:0});
 }
 function playerDie(pl){
   if(!pl.alive) return;
@@ -1553,8 +1679,8 @@ function fireWeapon(pl){
   if(pl.superT>0){ // SUPER BURNER — piercing flame stream
     const base=Math.atan2(fy0,fx0);
     for(let i=0;i<2;i++){
-      const a=base+(Math.random()-0.5)*0.26;
-      const sp=210+Math.random()*80;
+      const a=base+(grand()-0.5)*0.26;
+      const sp=210+grand()*80;
       pbul.push({x:pl.x+fx0*10,y:pl.y+fy0*10,dx:Math.cos(a)*sp,dy:Math.sin(a)*sp,
         dmg:1.4,pierce:true,flame:true,life:0.5,hitIds:[],sz:1.25+(pl.power-1)*0.25});
     }
@@ -1671,7 +1797,12 @@ function checkAllOut(){
   if((state==='play'||state==='clear')&&players().every(p=>p.out)){
     sfx.gameover();
     if(scoreQualifies(score)){ entry={ch:[0,0,0],slot:0}; state='entry'; }
-    else state='over';
+    else{
+      state='over';
+      const nm=localStorage.getItem('zoneout_name');
+      if(nm) lbSubmit(nm,score); // named pilots post every run
+    }
+    lbFetch();
   }
 }
 
@@ -1699,7 +1830,7 @@ function updateEnemies(dt){
         if(e.ft<=0&&e.y>0&&e.y<H-130&&bombSuppress<=0&&anyAlive()
            &&!lineBlocked(e.x,e.y,tp.x,tp.y)){
           eShoot(e.x,e.y,aimAng(e.x,e.y),95*k);
-          e.ft=1.9/k+Math.random()*0.6;
+          e.ft=1.9/k+grand()*0.6;
         }
         break;
       }
@@ -1870,7 +2001,7 @@ function updateBoss(dt){
       const q=clamp(1-b.moveT/1.6,0,1);
       b.y=95+Math.sin(Math.PI*q)*(b.kind===2?135:150);
       if(b.kind===2){ const tp=nearestP(b.x,b.y); b.x=clamp(b.x+clamp(tp.x-b.x,-1,1)*115*dt,60,W-60); } // crawler homes in
-      if(b.moveT<=0){ b.mode='hold'; b.moveT=4.5+Math.random()*2; b.y=95; }
+      if(b.moveT<=0){ b.mode='hold'; b.moveT=4.5+grand()*2; b.y=95; }
     }
   }
   if(b.kind===1){
@@ -1947,8 +2078,8 @@ function updateBoss(dt){
         const n=frac<0.7?6:4;
         for(let i=0;i<n;i++)
           lobs.push({x:b.x,y:b.y+12,
-            tx:clamp(tp.x+(Math.random()-0.5)*110,16,W-16),
-            ty:clamp(tp.y+(Math.random()-0.5)*90,150,H-24),
+            tx:clamp(tp.x+(grand()-0.5)*110,16,W-16),
+            ty:clamp(tp.y+(grand()-0.5)*90,150,H-24),
             t:0,dur:1.15});
         b.at1=1.7/k;
       }
@@ -2097,7 +2228,7 @@ function updateBoss(dt){
       if(frac<=0.25){
         b.at3-=dt;
         if(b.at3<=0){
-          if(enemies.length<9) spawnE('grunt',clamp(b.x+(Math.random()-0.5)*80,20,W-20),{y:b.y+50});
+          if(enemies.length<9) spawnE('grunt',clamp(b.x+(grand()-0.5)*80,20,W-20),{y:b.y+50});
           b.at3=3/k;
         }
       }
@@ -2170,9 +2301,9 @@ function updateBoss(dt){
       if(frac<=0.5){
         b.at2-=dt;
         if(b.at2<=0){
-          spawnE('mine',clamp(b.x+(Math.random()-0.5)*100,20,W-20),{y:b.y+34,phase:1,arm:1.6});
+          spawnE('mine',clamp(b.x+(grand()-0.5)*100,20,W-20),{y:b.y+34,phase:1,arm:1.6});
           if(frac<0.5)
-            spawnE('mine',clamp(b.x+(Math.random()-0.5)*140,20,W-20),{y:b.y+38,phase:1,arm:1.9});
+            spawnE('mine',clamp(b.x+(grand()-0.5)*140,20,W-20),{y:b.y+38,phase:1,arm:1.9});
           b.at2=1.9/k;
         }
       }
@@ -2192,7 +2323,7 @@ function updateBoss(dt){
       if(frac<=0.7){
         b.at2-=dt;
         if(b.at2<=0){ // bullet wall with a gap
-          const gap=40+Math.random()*(W-80);
+          const gap=40+grand()*(W-80);
           for(let x=8;x<W;x+=16)
             if(Math.abs(x-gap)>28) eShoot(x,b.y+42,Math.PI/2,92*k);
           b.at2=2.5/k;
@@ -2201,7 +2332,7 @@ function updateBoss(dt){
       if(frac<=0.35){
         b.at3-=dt;
         if(b.at3<=0){
-          spawnE('mine',clamp(b.x+(Math.random()-0.5)*90,20,W-20),{y:b.y+46,phase:1,arm:1.5});
+          spawnE('mine',clamp(b.x+(grand()-0.5)*90,20,W-20),{y:b.y+46,phase:1,arm:1.5});
           b.at3=2.0/k;
         }
       }
@@ -2211,7 +2342,7 @@ function updateBoss(dt){
   if(bossDropT<=0){
     b.dropN=(b.dropN||0)+1;
     const armor=(b.kind===4||b.kind===6||b.kind===7)&&b.dropN%2===0;
-    spawnP(armor?'A':'E',40+Math.random()*(W-80));
+    spawnP(armor?'A':'E',40+grand()*(W-80));
     bossDropT=26;
   }
   if(b.hp<=0){
@@ -3702,6 +3833,10 @@ function drawHUD(){
   ctx.fillStyle='#9aa3ad'; ctx.fillText('HI',W-64,7);
   ctx.fillStyle='#ffd24a'; ctx.font='800 10px '+FONT;
   ctx.fillText(String(Math.max(topScore(),score)),W-28,5);
+  if(runMode==='daily'&&(state==='play'||state==='clear')){
+    ctx.font='800 7px '+FONT; ctx.fillStyle='#9fe1ff'; ctx.textAlign='right';
+    ctx.fillText('DAILY #'+dailyKey(),W-4,24);
+  }
   // chain
   if(chain>1){
     ctx.textAlign='left'; ctx.font='800 9px '+FONT;
@@ -3887,8 +4022,8 @@ function drawTitle(){
   ctx.fillText('T O P - D O W N   R U N   &   G U N',W/2,133);
   // options menu
   const onoff=v=>v?'ON':'OFF';
-  const labels=['START','PLAYERS','DIFFICULTY','AIM','MUSIC','SFX','SHAKE','RUMBLE','HI-VIS SHOTS'];
-  const vals=['',SET.players===2?'2P (P2: GAMEPAD)':'1P',SET.diff==='normal'?'NORMAL':'ARCADE',
+  const labels=['START','DAILY CHALLENGE','PLAYERS','DIFFICULTY','AIM','MUSIC','SFX','SHAKE','RUMBLE','HI-VIS SHOTS'];
+  const vals=['','#'+dailyKey(),SET.players===2?'2P (P2: GAMEPAD)':'1P',SET.diff==='normal'?'NORMAL':'ARCADE',
     SET.aim==='twin'?'TWIN-STICK':'CLASSIC',VOLN[SET.mus],VOLN[SET.sfx],
     onoff(SET.shake),onoff(SET.rumble),onoff(SET.hivis)];
   for(let i=0;i<TM.rows;i++){
@@ -3922,21 +4057,40 @@ function drawTitle(){
     'CHASMS DROP · BELTS PUSH · WALLS BLOCK'
   ];
   hints.forEach((l,i)=>ctx.fillText(l,W/2,288+i*10));
-  // best scores
-  ctx.font='800 9px '+FONT; ctx.fillStyle='#8fd4ff';
-  ctx.fillText('—  BEST  —',W/2,324);
-  ctx.font='700 9px '+FONT;
-  if(!SCORES.length){
-    ctx.fillStyle='#5a626c'; ctx.fillText('NO RECORDS YET',W/2,338);
+  // score boards: local best, plus today's global board when online
+  const daily=lbData&&lbData.daily&&lbData.daily.length?lbData.daily:null;
+  const col=(title,list,x0,x1,hi)=>{
+    ctx.font='800 9px '+FONT; ctx.fillStyle='#8fd4ff'; ctx.textAlign='center';
+    ctx.fillText(title,(x0+x1)/2,324);
+    ctx.font='700 9px '+FONT;
+    if(!list.length){ ctx.fillStyle='#5a626c'; ctx.fillText('NO RECORDS',(x0+x1)/2,338); return; }
+    list.slice(0,4).forEach((s,i)=>{
+      const y=337+i*12.5;
+      ctx.textAlign='left'; ctx.fillStyle=i===0?hi:'#9aa3ad';
+      ctx.fillText((i+1)+' '+s.n,x0,y);
+      ctx.textAlign='right'; ctx.fillStyle=i===0?'#fff':'#c3ccd6';
+      ctx.fillText(String(s.s),x1,y);
+    });
+  };
+  if(daily){
+    col('— LOCAL —',SCORES,44,150,'#ffd24a');
+    col('— TODAY —',daily,178,286,'#9fe1ff');
+  }else{
+    ctx.font='800 9px '+FONT; ctx.fillStyle='#8fd4ff'; ctx.textAlign='center';
+    ctx.fillText('—  BEST  —',W/2,324);
+    ctx.font='700 9px '+FONT;
+    if(!SCORES.length){
+      ctx.fillStyle='#5a626c'; ctx.fillText('NO RECORDS YET',W/2,338);
+    }
+    SCORES.forEach((s,i)=>{
+      const y=337+i*12.5;
+      ctx.textAlign='left'; ctx.fillStyle=i===0?'#ffd24a':'#9aa3ad';
+      ctx.fillText((i+1)+'  '+s.n,102,y);
+      ctx.textAlign='right'; ctx.fillStyle=i===0?'#fff':'#c3ccd6';
+      ctx.fillText(String(s.s),200,y);
+      ctx.fillStyle='#5a626c'; ctx.fillText(s.m,218,y);
+    });
   }
-  SCORES.forEach((s,i)=>{
-    const y=337+i*12.5;
-    ctx.textAlign='left'; ctx.fillStyle=i===0?'#ffd24a':'#9aa3ad';
-    ctx.fillText((i+1)+'  '+s.n,102,y);
-    ctx.textAlign='right'; ctx.fillStyle=i===0?'#fff':'#c3ccd6';
-    ctx.fillText(String(s.s),200,y);
-    ctx.fillStyle='#5a626c'; ctx.fillText(s.m,218,y);
-  });
   if(Math.floor(perf*2)%2)
     bigText(touchMode?'TAP START TO PLAY':'ENTER = SELECT',420,10,'#8fd4ff');
 }
@@ -4264,7 +4418,20 @@ function draw(){
       ctx.fillText(String(s.s),206,y);
       ctx.fillStyle='#5a626c'; ctx.fillText(s.m,224,y);
     });
-    if(Math.floor(perf*2)%2) bigText(touchMode?'TAP FOR TITLE':'ENTER FOR TITLE',356,12,'#8fd4ff');
+    if(lbRank&&(lbRank.dayRank||lbRank.allRank)){
+      ctx.font='700 9px '+FONT; ctx.textAlign='center'; ctx.fillStyle='#9fe1ff';
+      const parts=[];
+      if(runMode==='daily'&&lbRank.dayRank) parts.push('#'+lbRank.dayRank+' TODAY');
+      if(lbRank.allRank) parts.push('#'+lbRank.allRank+' ALL-TIME');
+      ctx.fillText('GLOBAL:  '+parts.join('   '),W/2,340);
+    }
+    // share button
+    ctx.fillStyle='rgba(255,140,26,0.16)'; rrFill(SHARE_BTN.x,SHARE_BTN.y,SHARE_BTN.w,SHARE_BTN.h,7);
+    ctx.strokeStyle='#ff9a2a'; rrPath(ctx,SHARE_BTN.x,SHARE_BTN.y,SHARE_BTN.w,SHARE_BTN.h,7); ctx.stroke();
+    ctx.font='800 11px '+FONT; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#ffd24a'; ctx.fillText('SHARE',W/2,SHARE_BTN.y+SHARE_BTN.h/2);
+    ctx.textBaseline='top';
+    if(Math.floor(perf*2)%2) bigText(touchMode?'TAP FOR TITLE':'S = SHARE \u00b7 ENTER FOR TITLE',412,10,'#8fd4ff');
   }
   if(paused&&state==='play'){
     ctx.fillStyle='rgba(2,4,10,0.7)'; ctx.fillRect(0,0,W,H);
@@ -4305,6 +4472,7 @@ requestAnimationFrame(ts=>{ last=ts/1000; requestAnimationFrame(frame); });
 // PWA
 if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0)
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+lbFetch();
 </script>
 </body>
 </html>
