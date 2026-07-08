@@ -1572,10 +1572,10 @@ function fireWeapon(pl){
     if(pl.power>=2)
       pbul.push({x:pl.x+fx0*12,y:pl.y+fy0*12,dx:fx0*345,dy:fy0*345,dmg,sz,pc:pl.power});
     pl.fireT=[0,0.12,0.12,0.11,0.10,0.09][pl.power]; sfx.shoot();
-  }else{ // 3-way spread — wide left, straight, wide right
+  }else{ // 3-way spread — 11, 12 and 1 o'clock
     const dmg=1.5+0.5*pl.power;
     const base=Math.atan2(fy0,fx0);
-    for(const o of [-0.7,0,0.7])
+    for(const o of [-0.52,0,0.52]) // ±30°
       pbul.push({x:pl.x+fx0*8,y:pl.y+fy0*8,dx:Math.cos(base+o)*310,dy:Math.sin(base+o)*310,dmg,sz,pc:pl.power});
     pl.fireT=[0,0.22,0.19,0.16,0.14,0.12][pl.power]; sfx.eight();
   }
